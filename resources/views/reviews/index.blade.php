@@ -252,6 +252,12 @@
             color: #2c3e50;
         }
 
+        .stat-note {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #7f8c8d;
+        }
+
         /* Source Filter Buttons */
         .source-filters {
             display: flex;
@@ -446,14 +452,14 @@
 <body>
     <div class="header">
         <div class="header-content">
-            {{-- <div class="logo">Review Scraper</div> --}}
+            <div class="logo">Review Scraper</div>
         </div>
     </div>
 
     <div class="main-container">
         <div class="hero-section">
-            {{-- <h1 class="hero-title">Find reviews you can trust</h1> --}}
-            {{-- <p class="hero-subtitle">Discover, read, and analyze reviews from multiple sources</p> --}}
+            <h1 class="hero-title">Find reviews you can trust</h1>
+            <p class="hero-subtitle">Discover, read, and analyze reviews from multiple sources</p>
 
             <div class="search-box">
                 <div class="search-input-wrapper">
@@ -561,24 +567,29 @@
         }
 
         function displayResults(data) {
+            const limit = data.limit || 20;
             // Display stats
             const statsGrid = document.getElementById('stats-grid');
             statsGrid.innerHTML = '';
 
             if (data.ratings) {
                 if (data.ratings.google) {
+                    const googleTotal = data.ratings.google.total || 0;
                     statsGrid.innerHTML += `
                         <div class="stat-card">
                             <div class="stat-label">Google Rating</div>
-                            <div class="stat-value">⭐ ${data.ratings.google.rating} (${data.ratings.google.total.toLocaleString()} reviews)</div>
+                            <div class="stat-value">⭐ ${data.ratings.google.rating} (${googleTotal.toLocaleString()} reviews)</div>
+                            ${googleTotal > limit ? `<div class="stat-note">Showing latest ${limit} reviews from Google</div>` : ''}
                         </div>
                     `;
                 }
                 if (data.ratings.trustpilot) {
+                    const trustpilotTotal = data.ratings.trustpilot.total || 0;
                     statsGrid.innerHTML += `
                         <div class="stat-card">
                             <div class="stat-label">Trustpilot Rating</div>
-                            <div class="stat-value">⭐ ${data.ratings.trustpilot.rating} (${data.ratings.trustpilot.total.toLocaleString()} reviews)</div>
+                            <div class="stat-value">⭐ ${data.ratings.trustpilot.rating} (${trustpilotTotal.toLocaleString()} reviews)</div>
+                            ${trustpilotTotal > limit ? `<div class="stat-note">Showing latest ${limit} reviews from Trustpilot</div>` : ''}
                         </div>
                     `;
                 }
@@ -588,6 +599,7 @@
                 <div class="stat-card">
                     <div class="stat-label">Total Reviews Found</div>
                     <div class="stat-value">${data.total_reviews || 0}</div>
+                    <div class="stat-note">Showing up to ${limit} recent reviews per source.</div>
                 </div>
             `;
 

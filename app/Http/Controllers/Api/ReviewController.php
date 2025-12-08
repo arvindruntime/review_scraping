@@ -176,6 +176,7 @@ class ReviewController extends Controller
             'ratings' => $ratings,
             'total_reviews' => count($allReviews),
             'reviews' => $allReviews,
+            'limit' => $limit,
         ]);
         
         } catch (\Exception $e) {
