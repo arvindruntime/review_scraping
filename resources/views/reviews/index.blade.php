@@ -446,14 +446,14 @@
 <body>
     <div class="header">
         <div class="header-content">
-            <div class="logo">Review Scraper</div>
+            {{-- <div class="logo">Review Scraper</div> --}}
         </div>
     </div>
 
     <div class="main-container">
         <div class="hero-section">
-            <h1 class="hero-title">Find reviews you can trust</h1>
-            <p class="hero-subtitle">Discover, read, and analyze reviews from multiple sources</p>
+            {{-- <h1 class="hero-title">Find reviews you can trust</h1> --}}
+            {{-- <p class="hero-subtitle">Discover, read, and analyze reviews from multiple sources</p> --}}
 
             <div class="search-box">
                 <div class="search-input-wrapper">
