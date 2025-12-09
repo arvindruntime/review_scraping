@@ -550,7 +550,18 @@
                     })
                 });
 
-                const data = await response.json();
+                // Check content type before parsing JSON
+                const contentType = response.headers.get('content-type');
+                let data;
+                
+                if (contentType && contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    // If response is not JSON, get text to see what we got
+                    const text = await response.text();
+                    console.error('Non-JSON response received:', text.substring(0, 500));
+                    throw new Error('Server returned an invalid response. Please check server logs or contact support.');
+                }
 
                 if (!response.ok) {
                     throw new Error(data.error || 'Failed to fetch reviews');
@@ -559,7 +570,13 @@
                 allReviews = data.reviews || [];
                 displayResults(data);
             } catch (error) {
-                showError(error.message);
+                // Handle JSON parsing errors specifically
+                if (error instanceof SyntaxError && error.message.includes('JSON')) {
+                    showError('Server returned an invalid response. This may indicate a server configuration issue. Please check that the Trustpilot scraper service is running.');
+                } else {
+                    showError(error.message || 'An unexpected error occurred. Please try again.');
+                }
+                console.error('Error fetching reviews:', error);
             } finally {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('search-btn').disabled = false;
