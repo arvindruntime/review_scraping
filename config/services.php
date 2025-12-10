@@ -34,5 +34,8 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'apify' => [
+        'token' => env('APIFY_API_KEY'),
+    ],
 
 ];
