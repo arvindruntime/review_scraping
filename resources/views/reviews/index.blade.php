@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <!-- <meta name="csrf-token" content="{{ csrf_token() }}"> -->
     <title>Review Scraper</title>
     <style>
         * {
@@ -537,6 +537,10 @@
             document.getElementById('search-btn').disabled = true;
 
             try {
+                // Set a longer timeout for the fetch request (90 seconds)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 90000);
+                
                 const response = await fetch('/api/reviews/fetch', {
                     method: 'POST',
                     headers: {
@@ -547,8 +551,11 @@
                         domain: domain,
                         sources: sources,
                         limit: 20
-                    })
+                    }),
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
 
                 // Check content type before parsing JSON
                 const contentType = response.headers.get('content-type');
@@ -570,9 +577,11 @@
                 allReviews = data.reviews || [];
                 displayResults(data);
             } catch (error) {
-                // Handle JSON parsing errors specifically
-                if (error instanceof SyntaxError && error.message.includes('JSON')) {
-                    showError('Server returned an invalid response. This may indicate a server configuration issue. Please check that the Trustpilot scraper service is running.');
+                // Handle different types of errors
+                if (error.name === 'AbortError' || error.message.includes('timeout')) {
+                    showError('Request timed out. The scraping process is taking longer than expected. Please try again or contact support.');
+                } else if (error instanceof SyntaxError && error.message.includes('JSON')) {
+                    showError('Server returned an invalid response. This may indicate a server configuration issue (504 Gateway Timeout). Please check that the Trustpilot scraper service is running and that server timeouts are configured correctly.');
                 } else {
                     showError(error.message || 'An unexpected error occurred. Please try again.');
                 }

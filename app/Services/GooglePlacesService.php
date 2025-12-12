@@ -7,11 +7,13 @@ use Illuminate\Support\Facades\Log;
 
 class GooglePlacesService
 {
+    private string $scraperUrl;
     private string $apiKey;
 
     public function __construct()
     {
         $this->apiKey = env('GOOGLE_PLACES_API_KEY');
+        $this->scraperUrl = env('TRUSTPILOT_SCRAPER_URL', 'http://localhost:4000');
     }
 
     /**
@@ -99,9 +101,51 @@ class GooglePlacesService
     }
 
     /**
-     * Get reviews for a domain
+     * Get reviews for a domain using the Node scraper
      */
     public function getReviewsForDomain(string $domain, int $limit = 20): array
+    {
+        try {
+            Log::info('Fetching Google reviews via scraper for domain: ' . $domain);
+            
+            // Use the Node scraper service
+            $response = Http::timeout(90)->post($this->scraperUrl . '/scrape-google', [
+                'domain' => $domain,
+                'limit' => $limit,
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                
+                return [
+                    'rating' => $data['rating'] ?? null,
+                    'total_reviews' => $data['total_reviews'] ?? 0,
+                    'reviews' => $data['reviews'] ?? [],
+                ];
+            } else {
+                Log::error('Google scraper returned non-success status', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                
+                // Fallback to API if scraper fails?
+                // For now, let's return empty or maybe try the API as backup if we really want to be robust.
+                // But the API has the 5 review limit.
+                // Let's fallback to API for basic data if scraper fails.
+                Log::info('Falling back to Google Places API due to scraper failure');
+                return $this->getReviewsForDomainViaApi($domain, $limit);
+            }
+        } catch (\Exception $e) {
+            Log::error('Google scraper error: ' . $e->getMessage());
+            // Fallback to API
+            return $this->getReviewsForDomainViaApi($domain, $limit);
+        }
+    }
+
+    /**
+     * Fallback method using official API
+     */
+    private function getReviewsForDomainViaApi(string $domain, int $limit = 20): array
     {
         $business = $this->findBusinessByDomain($domain);
         

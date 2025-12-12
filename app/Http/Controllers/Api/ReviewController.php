@@ -20,6 +20,335 @@ class ReviewController extends Controller
         $this->googlePlacesService = $googlePlacesService;
         $this->trustpilotService = $trustpilotService;
     }
+public function fetch(Request $request)
+    {
+        $request->validate([
+            'domain'  => 'required|string',
+            'sources' => 'required|array|min:1',
+            'limit'   => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $domain  = strtolower(trim($request->input('domain')));
+        $sources = $request->input('sources');
+        $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));
+
+        // 1) Try from DB cache
+        $search = Search::where('domain', $domain)->first();
+
+        if ($search) {
+            $reviewsQuery = $search->reviews()->whereIn('source', $sources);
+            $reviews = $reviewsQuery->orderByDesc('date')->limit($limit * count($sources))->get();
+
+            if ($reviews->isNotEmpty()) {
+                return response()->json([
+                    'domain'        => $domain,
+                    'sources'       => $sources,
+                    'ratings'       => $search->ratings ?? [],
+                    'total_reviews' => $search->total_reviews ?? 0,
+                    'limit'         => $limit,
+                    'reviews'       => $reviews->map(function (Review $r) {
+                        return [
+                            'source' => $r->source,
+                            'rating' => $r->rating,
+                            'text'   => $r->text,
+                            'date'   => optional($r->date)->format('Y-m-d'),
+                            'author' => $r->author,
+                        ];
+                    })->values(),
+                ]);
+            }
+        }
+
+        // 2) Not cached or empty → fetch from Apify
+        $allReviews   = [];
+        $ratings      = [];
+        $totalReviews = 0;
+
+        if (in_array('google', $sources)) {
+            $googleResult = $this->fetchFromGoogle($domain, $limit);
+            $allReviews   = array_merge($allReviews, $googleResult['reviews']);
+            if ($googleResult['summary']) {
+                $ratings['google'] = $googleResult['summary'];
+            }
+            $totalReviews += count($googleResult['reviews']);
+        }
+
+        if (in_array('trustpilot', $sources)) {
+            $trustResult  = $this->fetchFromTrustpilot($domain, $limit);
+            $allReviews   = array_merge($allReviews, $trustResult['reviews']);
+            if ($trustResult['summary']) {
+                $ratings['trustpilot'] = $trustResult['summary'];
+            }
+            $totalReviews += count($trustResult['reviews']);
+        }
+
+        // 3) Store in DB for future use
+        DB::beginTransaction();
+
+        try {
+            $search = Search::updateOrCreate(
+                ['domain' => $domain],
+                [
+                    'sources'       => $sources,
+                    'ratings'       => $ratings,
+                    'total_reviews' => $totalReviews,
+                ]
+            );
+
+            $search->reviews()->delete();
+
+            foreach ($allReviews as $r) {
+                Review::create([
+                    'search_id' => $search->id,
+                    'source'    => $r['source'],
+                    'rating'    => $r['rating'],
+                    'text'      => $r['text'],
+                    'date'      => $r['date'] ?? null,
+                    'author'    => $r['author'] ?? null,
+                ]);
+            }
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'error' => 'Error saving reviews.',
+            ], 500);
+        }
+
+        // 4) Response for front-end JS (matches your HTML logic)
+        return response()->json([
+            'domain'        => $domain,
+            'sources'       => $sources,
+            'ratings'       => $ratings,
+            'total_reviews' => $totalReviews,
+            'limit'         => $limit,
+            'reviews'       => collect($allReviews)->map(function ($r) {
+                return [
+                    'source' => $r['source'],
+                    'rating' => $r['rating'],
+                    'text'   => $r['text'],
+                    'date'   => $r['date'] ?? null,
+                    'author' => $r['author'] ?? null,
+                ];
+            })->values(),
+        ]);
+    }
+
+    protected function fetchFromGoogle(string $domain, int $limit): array
+    {
+        $token   = config('apify.token');
+        $actorId = config('apify.google_actor');
+
+        // TODO: improve mapping domain → business + location
+        $searchString = $domain;
+
+        $payload = [
+            'searchStringsArray' => [$searchString],
+            'language'           => 'en',
+            'maxReviews'         => $limit,
+            'reviewsSort'        => 'newest',
+            'includeReviews'     => true,
+        ];
+
+        $run = Http::post(
+            "https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}",
+            $payload
+        );
+
+        if (! $run->successful()) {
+            return ['reviews' => [], 'summary' => null];
+        }
+
+        $runData = $run->json('data');
+        if (! $runData || ! isset($runData['id'])) {
+            return ['reviews' => [], 'summary' => null];
+        }
+
+        $runId     = $runData['id'];
+        $status    = $runData['status'] ?? 'READY';
+        $datasetId = $runData['defaultDatasetId'] ?? null;
+
+        $attempt = 0;
+        while ($attempt < 15 && $status !== 'SUCCEEDED' && $status !== 'FAILED') {
+            sleep(1);
+            $statusRes = Http::get(
+                "https://api.apify.com/v2/acts/{$actorId}/runs/{$runId}?token={$token}"
+            );
+            if (! $statusRes->successful()) {
+                break;
+            }
+            $data      = $statusRes->json('data');
+            $status    = $data['status'] ?? $status;
+            $datasetId = $data['defaultDatasetId'] ?? $datasetId;
+            $attempt++;
+        }
+
+        if ($status !== 'SUCCEEDED' || ! $datasetId) {
+            return ['reviews' => [], 'summary' => null];
+        }
+
+        $itemsRes = Http::get(
+            "https://api.apify.com/v2/datasets/{$datasetId}/items",
+            [
+                'token'  => $token,
+                'format' => 'json',
+                'clean'  => 'true',
+                'limit'  => $limit,
+                'desc'   => 'true',
+            ]
+        );
+        // dd($itemsRes);
+
+        if (! $itemsRes->successful()) {
+            return ['reviews' => [], 'summary' => null];
+        }
+
+        $items   = $itemsRes->json();
+        $reviews = [];
+        $summaryRatingSum = 0;
+        $summaryRatingCnt = 0;
+        
+
+        foreach ($items as $place) {
+            if (isset($place['rating']) && isset($place['userRatingsTotal'])) {
+                $summaryRatingSum += $place['rating'] * $place['userRatingsTotal'];
+                $summaryRatingCnt += $place['userRatingsTotal'];
+            }
+
+            if (! isset($place['reviews']) || ! is_array($place['reviews'])) {
+                continue;
+            }
+
+            foreach ($place['reviews'] as $r) {
+                $reviews[] = [
+                    'source' => 'google',
+                    'rating' => (int) ($r['rating'] ?? 0),
+                    'text'   => $r['text'] ?? $r['reviewText'] ?? '',
+                    'date'   => $r['publishedAtDate'] ?? $r['reviewDate'] ?? null,
+                    'author' => $r['reviewerName'] ?? $r['authorName'] ?? null,
+                ];
+            }
+        }
+
+        usort($reviews, fn($a, $b) => strcmp((string)($b['date'] ?? ''), (string)($a['date'] ?? '')));
+        $reviews = array_slice($reviews, 0, $limit);
+
+        $summary = null;
+        if ($summaryRatingCnt > 0) {
+            $summary = [
+                'rating' => round($summaryRatingSum / $summaryRatingCnt, 2),
+                'total'  => $summaryRatingCnt,
+            ];
+        }
+
+        return ['reviews' => $reviews, 'summary' => $summary];
+    }
+
+    protected function fetchFromTrustpilot(string $domain, int $limit): array
+    {
+        $token   = config('apify.token');
+        $actorId = config('apify.trustpilot_actor');
+
+        $payload = [
+            'startUrls' => [
+                ['url' => "https://www.trustpilot.com/review/{$domain}"],
+            ],
+            'maxReviews' => $limit,
+        ];
+
+        $run = Http::post(
+            "https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}",
+            $payload
+        );
+
+        if (! $run->successful()) {
+            return ['reviews' => [], 'summary' => null];
+        }
+
+        $runData = $run->json('data');
+        if (! $runData || ! isset($runData['id'])) {
+            return ['reviews' => [], 'summary' => null];
+        }
+
+        $runId     = $runData['id'];
+        $status    = $runData['status'] ?? 'READY';
+        $datasetId = $runData['defaultDatasetId'] ?? null;
+
+        $attempt = 0;
+        while ($attempt < 15 && $status !== 'SUCCEEDED' && $status !== 'FAILED') {
+            sleep(1);
+            $statusRes = Http::get(
+                "https://api.apify.com/v2/acts/{$actorId}/runs/{$runId}?token={$token}"
+            );
+            if (! $statusRes->successful()) {
+                break;
+            }
+            $data      = $statusRes->json('data');
+            $status    = $data['status'] ?? $status;
+            $datasetId = $data['defaultDatasetId'] ?? $datasetId;
+            $attempt++;
+        }
+
+        if ($status !== 'SUCCEEDED' || ! $datasetId) {
+            return ['reviews' => [], 'summary' => null];
+        }
+
+        $itemsRes = Http::get(
+            "https://api.apify.com/v2/datasets/{$datasetId}/items",
+            [
+                'token'  => $token,
+                'format' => 'json',
+                'clean'  => 'true',
+                'limit'  => $limit,
+                'desc'   => 'true',
+            ]
+        );
+
+        if (! $itemsRes->successful()) {
+            return ['reviews' => [], 'summary' => null];
+        }
+
+        $items   = $itemsRes->json();
+        $reviews = [];
+        $summaryRatingSum = 0;
+        $summaryRatingCnt = 0;
+
+        foreach ($items as $item) {
+            if (isset($item['rating']) && isset($item['totalReviews'])) {
+                $summaryRatingSum += $item['rating'] * $item['totalReviews'];
+                $summaryRatingCnt += $item['totalReviews'];
+            }
+
+            if (! isset($item['reviews']) || ! is_array($item['reviews'])) {
+                continue;
+            }
+
+            foreach ($item['reviews'] as $r) {
+                $reviews[] = [
+                    'source' => 'trustpilot',
+                    'rating' => (int) ($r['rating'] ?? 0),
+                    'text'   => $r['text'] ?? $r['reviewText'] ?? '',
+                    'date'   => $r['date'] ?? null,
+                    'author' => $r['author'] ?? null,
+                ];
+            }
+        }
+
+        usort($reviews, fn($a, $b) => strcmp((string)($b['date'] ?? ''), (string)($a['date'] ?? '')));
+        $reviews = array_slice($reviews, 0, $limit);
+
+        $summary = null;
+        if ($summaryRatingCnt > 0) {
+            $summary = [
+                'rating' => round($summaryRatingSum / $summaryRatingCnt, 2),
+                'total'  => $summaryRatingCnt,
+            ];
+        }
+
+        return ['reviews' => $reviews, 'summary' => $summary];
+    }
 
     /**
      * Fetch reviews for a domain
@@ -28,7 +357,10 @@ class ReviewController extends Controller
     {
         try {
             // Increase execution time for Trustpilot scraping
-            set_time_limit(180);
+            // Reduced to 90 seconds to avoid Nginx/PHP-FPM gateway timeouts
+            // Note: Server configuration (Nginx proxy_read_timeout, PHP-FPM request_terminate_timeout)
+            // should also be increased if scraping consistently takes longer
+            set_time_limit(90);
             
             $validator = Validator::make($request->all(), [
             'domain' => 'required|string',
