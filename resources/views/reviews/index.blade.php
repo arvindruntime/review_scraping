@@ -447,6 +447,66 @@
                 grid-template-columns: 1fr;
             }
         }
+        
+        /* /////// reviews in tabular formate css */
+        .reviews-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+
+.reviews-table th,
+.reviews-table td {
+    padding: 14px 16px;
+    text-align: left;
+    border-bottom: 1px solid #e9ecef;
+    vertical-align: top;
+}
+
+.reviews-table th {
+    background: #f4f6f8;
+    font-weight: 700;
+    color: #2c3e50;
+    font-size: 14px;
+    text-transform: uppercase;
+}
+
+.reviews-table td {
+    font-size: 14px;
+    color: #34495e;
+}
+
+.reviews-table tr:hover {
+    background: #f9fbfc;
+}
+
+.rating-stars {
+    color: #FFB800;
+    font-size: 16px;
+}
+
+.source-badge-table {
+    padding: 6px 12px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+.source-badge-table.google {
+    background: #4285F4;
+    color: #fff;
+}
+
+.source-badge-table.trustpilot {
+    background: #00B67A;
+    color: #fff;
+}
+
     </style>
 </head>
 <body>
@@ -491,7 +551,7 @@
 
         <div id="results" style="display: none;">
             <div class="stats-section">
-                <h2 class="stats-title">Statistics</h2>
+                <h2 class="stats-title">Stats</h2>
                 <div class="stats-grid" id="stats-grid"></div>
             </div>
 
@@ -502,12 +562,46 @@
             </div>
 
             <div id="reviews-container">
-                <div class="reviews-grid" id="reviews-grid"></div>
+                <div style="overflow-x:auto;">
+                    <table class="reviews-table" id="reviews-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Source</th>
+                                <th>Reviewer Name</th>
+                                <th>Rating (Stars)</th>
+                                <th>Date of review</th>
+                                <th>Review Description</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reviews-table-body">
+                            <!-- Rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
+
         </div>
     </div>
 
     <script>
+        
+        
+    function renderStars(rating) {
+        rating = Math.round(rating * 2) / 2; // allow .5
+        let stars = '';
+
+        for (let i = 1; i <= 5; i++) {
+            if (rating >= i) {
+                stars += '★';
+            } else if (rating >= i - 0.5) {
+                stars += '☆'; // half star fallback
+            } else {
+                stars += '☆';
+            }
+        }
+        return stars;
+    }
         let allReviews = [];
         let currentFilter = 'all';
 
@@ -597,28 +691,48 @@
             // Display stats
             const statsGrid = document.getElementById('stats-grid');
             statsGrid.innerHTML = '';
+            
+            statsGrid.innerHTML = `
+                <div style="grid-column:1/-1;font-weight:700;font-size:18px;">
+                    Reviews for: ${data.domain}
+                </div>
+            `;
 
             if (data.ratings) {
                 if (data.ratings.google) {
-                    const googleTotal = data.ratings.google.total || 0;
+                    const g = data.ratings.google;
                     statsGrid.innerHTML += `
                         <div class="stat-card">
-                            <div class="stat-label">Google Rating</div>
-                            <div class="stat-value">⭐ ${data.ratings.google.rating} (${googleTotal.toLocaleString()} reviews)</div>
-                            ${googleTotal > limit ? `<div class="stat-note">Showing latest ${limit} reviews from Google</div>` : ''}
+                            <div class="stat-label">Google Reviews</div>
+                            <div class="stat-value">
+                                ${g.rating}
+                                <span style="color:#FFB800; font-size:18px;">
+                                    ${renderStars(g.rating)}
+                                </span>
+                                (${g.total})
+                            </div>
+                            <div class="stat-note">Google Reviews</div>
                         </div>
                     `;
-                }
+                }               
+                
                 if (data.ratings.trustpilot) {
-                    const trustpilotTotal = data.ratings.trustpilot.total || 0;
+                    const t = data.ratings.trustpilot;
                     statsGrid.innerHTML += `
                         <div class="stat-card">
-                            <div class="stat-label">Trustpilot Rating</div>
-                            <div class="stat-value">⭐ ${data.ratings.trustpilot.rating} (${trustpilotTotal.toLocaleString()} reviews)</div>
-                            ${trustpilotTotal > limit ? `<div class="stat-note">Showing latest ${limit} reviews from Trustpilot</div>` : ''}
+                            <div class="stat-label">Trustpilot Reviews</div>
+                            <div class="stat-value">
+                                ${t.rating}
+                                <span style="color:#FFB800; font-size:18px;">
+                                    ${renderStars(t.rating)}
+                                </span>
+                                (${t.total})
+                            </div>
+                            <div class="stat-note">Trustpilot Reviews</div>
                         </div>
                     `;
                 }
+
             }
 
             statsGrid.innerHTML += `
@@ -633,63 +747,60 @@
             filterReviews(currentFilter);
             document.getElementById('results').style.display = 'block';
         }
+        
+    function filterReviews(source) {
+        currentFilter = source;
 
-        function filterReviews(source) {
-            currentFilter = source;
-
-            // Update active button
-            document.querySelectorAll('.source-filter-btn').forEach(btn => {
-                btn.classList.remove('active');
-                const btnText = btn.textContent.toLowerCase().trim();
-                if ((source === 'all' && btnText.includes('all')) ||
-                    (source === 'google' && btnText === 'google') ||
-                    (source === 'trustpilot' && btnText === 'trustpilot')) {
-                    btn.classList.add('active');
-                }
-            });
-
-            // Filter reviews
-            const filteredReviews = source === 'all' 
-                ? allReviews 
-                : allReviews.filter(r => r.source === source);
-
-            // Display filtered reviews
-            const reviewsGrid = document.getElementById('reviews-grid');
-            if (filteredReviews.length === 0) {
-                reviewsGrid.innerHTML = `
-                    <div class="no-reviews" style="grid-column: 1 / -1;">
-                        <div class="no-reviews-icon">🔍</div>
-                        <div class="no-reviews-text">No reviews found</div>
-                    </div>
-                `;
-            } else {
-                reviewsGrid.innerHTML = filteredReviews.map(review => {
-                    const authorInitial = review.author ? review.author.charAt(0).toUpperCase() : '?';
-                    const stars = Array.from({ length: 5 }, (_, i) => 
-                        i < review.rating 
-                            ? '<span class="star">⭐</span>' 
-                            : '<span class="star empty">☆</span>'
-                    ).join('');
-
-                    return `
-                        <div class="review-card">
-                            <div class="review-header">
-                                <div class="reviewer-avatar">${authorInitial}</div>
-                                <div class="reviewer-info">
-                                    <div class="reviewer-name">${review.author || 'Anonymous'}</div>
-                                    <div class="review-rating">${stars}</div>
-                                </div>
-                            </div>
-                            <div class="review-text">${escapeHtml(review.text)}</div>
-                            <div class="review-footer">
-                                <div class="review-date">${review.date || 'Date not available'}</div>
-                                <span class="source-badge ${review.source}">${review.source}</span>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
+        document.querySelectorAll('.source-filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (
+                (source === 'all' && btn.textContent.includes('All')) ||
+                (source === 'google' && btn.textContent === 'Google') ||
+                (source === 'trustpilot' && btn.textContent === 'Trustpilot')
+            ) {
+                btn.classList.add('active');
             }
+        });
+
+        const filteredReviews = source === 'all'
+            ? allReviews
+            : allReviews.filter(r => r.source === source);
+
+        const tbody = document.getElementById('reviews-table-body');
+        tbody.innerHTML = '';
+
+        if (filteredReviews.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align:center; padding:30px;">
+                        No reviews found
+                    </td>
+                </tr>
+            `;
+            return;
         }
+
+        filteredReviews.forEach((review, index) => {
+            const stars = '⭐'.repeat(review.rating || 0);
+
+            tbody.innerHTML += `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>
+                        <span class="source-badge-table ${review.source}">
+                            ${review.source}
+                        </span>
+                    </td>
+                    <td>${escapeHtml(review.author || 'Anonymous')}</td>
+                    <td class="rating-stars">${stars}</td>
+                    <td>${review.date || '-'}</td>
+                    <td>${escapeHtml(review.text || '')}</td>
+                    
+                </tr>
+            `;
+        });
+    }
+
 
         function escapeHtml(text) {
             const div = document.createElement('div');
