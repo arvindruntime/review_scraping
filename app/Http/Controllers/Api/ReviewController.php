@@ -215,130 +215,136 @@ class ReviewController extends Controller
         ];
     }
 
-    protected function fetchFromTrustpilot(string $domain, int $limit): array
-    {
-        $token   = config('apify.token');
-        $actorId = config('apify.trustpilot_actor');
+protected function fetchFromTrustpilot(string $domain, int $limit): array
+{
+    $token   = config('apify.token');              // e.g. env('APIFY_TOKEN')
+    $actorId = config('apify.trustpilot_actor');   // e.g. 'nikita-sviridenko~trustpilot-reviews-scraper'
 
-        if (!$actorId) {
-            \Log::error('Trustpilot actor ID missing');
-            return ['reviews' => [], 'summary' => null];
-        }
+    if (!$actorId || !$token) {
+        \Log::error('Trustpilot actor ID or token missing', [
+            'actorId'  => $actorId,
+            'hasToken' => !empty($token),
+        ]);
+        return ['reviews' => [], 'summary' => null];
+    }
 
-        /* ===============================
-        1) Start actor run
-        =============================== */
-        $run = Http::post(
-            "https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}",
-            [
-                'startUrls' => [
-                    ['url' => "https://www.trustpilot.com/review/{$domain}"]
-                ],
-                'maxReviews' => $limit,
-            ]
-        );
+    // 1) Start actor run – this actor expects "companyDomain" and "maxReviews"
+    $run = Http::withToken($token)->post(
+        "https://api.apify.com/v2/acts/{$actorId}/runs",
+        [
+            'companyDomain' => $domain,   // <- required by this actor
+            'maxReviews'    => $limit,
+        ]
+    );
 
-        if (!$run->successful()) {
-            \Log::error('Trustpilot run start failed', [
-                'status' => $run->status(),
-                'body'   => $run->body(),
+    if (!$run->successful()) {
+        \Log::error('Trustpilot run start failed', [
+            'status' => $run->status(),
+            'body'   => $run->body(),
+        ]);
+        return ['reviews' => [], 'summary' => null];
+    }
+
+    $runId = data_get($run->json(), 'data.id');
+    if (!$runId) {
+        \Log::error('Trustpilot run id missing', ['response' => $run->json()]);
+        return ['reviews' => [], 'summary' => null];
+    }
+
+    // 2) Poll run status
+    $status    = 'RUNNING';
+    $datasetId = null;
+
+    for ($i = 0; $i < 60; $i++) {
+        sleep(2);
+
+        $statusRes = Http::withToken($token)
+            ->get("https://api.apify.com/v2/actor-runs/{$runId}");
+
+        if (!$statusRes->successful()) {
+            \Log::warning('Trustpilot status check failed', [
+                'status' => $statusRes->status(),
+                'body'   => $statusRes->body(),
             ]);
-            return ['reviews' => [], 'summary' => null];
+            break;
         }
 
-        $runId = $run->json('data.id');
-        if (!$runId) {
-            return ['reviews' => [], 'summary' => null];
+        $data      = $statusRes->json('data');
+        $status    = $data['status'] ?? $status;
+        $datasetId = $data['defaultDatasetId'] ?? $datasetId;
+
+        if (in_array($status, ['SUCCEEDED', 'FAILED', 'ABORTED'], true)) {
+            break;
         }
+    }
 
-        /* ===============================
-        2) Poll run status (CORRECT ENDPOINT)
-        =============================== */
-        $status    = 'RUNNING';
-        $datasetId = null;
+    if ($status !== 'SUCCEEDED' || !$datasetId) {
+        \Log::warning('Trustpilot run not completed', [
+            'domain'    => $domain,
+            'status'    => $status,
+            'datasetId' => $datasetId,
+        ]);
+        return ['reviews' => [], 'summary' => null];
+    }
 
-        for ($i = 0; $i < 60; $i++) {
-            sleep(2);
+    // 3) Fetch dataset items (flat list of reviews)
+    $itemsRes = Http::withToken($token)->get(
+        "https://api.apify.com/v2/datasets/{$datasetId}/items",
+        [
+            'format' => 'json',
+            'clean'  => true,
+            'desc'   => true,
+            'limit'  => $limit,   // ask API to cap at limit
+        ]
+    );
 
-            $statusRes = Http::get(
-                "https://api.apify.com/v2/actor-runs/{$runId}?token={$token}"
-            );
+    if (!$itemsRes->successful()) {
+        \Log::warning('Trustpilot dataset fetch failed', [
+            'status' => $itemsRes->status(),
+            'body'   => $itemsRes->body(),
+        ]);
+        return ['reviews' => [], 'summary' => null];
+    }
 
-            if (!$statusRes->successful()) {
-                break;
-            }
+    $items = $itemsRes->json();
+    if (empty($items)) {
+        return ['reviews' => [], 'summary' => null];
+    }
 
-            $data      = $statusRes->json('data');
-            $status    = $data['status'] ?? $status;
-            $datasetId = $data['defaultDatasetId'] ?? $datasetId;
-
-            if ($status === 'SUCCEEDED') {
-                break;
-            }
-        }
-
-        if ($status !== 'SUCCEEDED' || !$datasetId) {
-            \Log::warning('Trustpilot run not completed', [
-                'domain' => $domain,
-                'status' => $status,
-            ]);
-            return ['reviews' => [], 'summary' => null];
-        }
-
-        /* ===============================
-        3) Fetch dataset items
-        =============================== */
-        $itemsRes = Http::get(
-            "https://api.apify.com/v2/datasets/{$datasetId}/items",
-            [
-                'token'  => $token,
-                'format' => 'json',
-                'clean'  => true,
-                'desc'   => true,
-            ]
-        );
-
-        if (!$itemsRes->successful()) {
-            return ['reviews' => [], 'summary' => null];
-        }
-
-        $items = $itemsRes->json();
-        if (empty($items[0])) {
-            return ['reviews' => [], 'summary' => null];
-        }
-
-        /* ===============================
-        4) Parse Trustpilot structure
-        =============================== */
-        $first = $items[0];
-
-        $summary = null;
-        if (!empty($first['businessUnit'])) {
-            $summary = [
-                'rating' => (float) ($first['businessUnit']['stars'] ?? 0),
-                'total'  => (int) ($first['businessUnit']['numberOfReviews'] ?? 0),
-            ];
-        }
-
-        $reviews = [];
-        foreach ($first['reviews'] ?? [] as $r) {
-            $reviews[] = [
-                'source' => 'trustpilot',
-                'rating' => (int) ($r['rating'] ?? 0),
-                'text'   => trim($r['text'] ?? ''),
-                'date'   => $r['date'] ?? null,
-                'author' => $r['consumer']['displayName'] ?? null,
-            ];
-        }
-
-        usort($reviews, fn ($a, $b) =>
-            strcmp((string) ($b['date'] ?? ''), (string) ($a['date'] ?? ''))
-        );
-
-        return [
-            'reviews' => array_slice($reviews, 0, $limit),
-            'summary' => $summary,
+    // 4) Map actor items => internal review format
+    $reviews = [];
+    foreach ($items as $r) {
+        $reviews[] = [
+            'source' => 'trustpilot',
+            'rating' => (int)($r['ratingValue'] ?? 0),
+            'text'   => trim($r['reviewBody'] ?? ''),
+            'date'   => $r['datePublished'] ?? null,
+            'author' => $r['authorName'] ?? null,
         ];
     }
+
+    // Newest first by date
+    usort($reviews, static function ($a, $b) {
+        return strcmp((string)($b['date'] ?? ''), (string)($a['date'] ?? ''));
+    });
+
+    // Build a simple summary
+    $summary = null;
+    if ($reviews) {
+        $count = count($reviews);
+        $avg   = $count ? array_sum(array_column($reviews, 'rating')) / $count : 0;
+        $summary = [
+            'rating' => round($avg, 2),
+            'total'  => $count,
+        ];
+    }
+
+    return [
+        'reviews' => array_slice($reviews, 0, $limit),
+        'summary' => $summary,
+    ];
+}
+
+
 }
 
