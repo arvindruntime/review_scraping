@@ -538,10 +538,10 @@
                         <input type="checkbox" id="filter-google" checked>
                         <label for="filter-google">Google Reviews</label>
                     </div>
-                    <!-- <div class="filter-checkbox">
-                        <input type="checkbox" id="filter-trustpilot" checked>
+                    <div class="filter-checkbox">
+                        <input type="checkbox" id="filter-trustpilot" disabled>
                         <label for="filter-trustpilot">Trustpilot</label>
-                    </div> -->
+                    </div>
                 </div>
             </div>
         </div>
