@@ -606,9 +606,18 @@
         let currentFilter = 'all';
 
         async function fetchReviews() {
-            const domain = document.getElementById('domain').value.trim();
+            
+            // const domain = document.getElementById('domain').value.trim();
+            // if (!domain) {
+            //     showError('Please enter a domain');
+            //     return;
+            // }
+                        
+            const rawInput = document.getElementById('domain').value;
+            const domain = normalizeAndValidateDomain(rawInput);
+            
             if (!domain) {
-                showError('Please enter a domain');
+                showError('Please enter a valid domain name (e.g., ubereats.com)');
                 return;
             }
 
@@ -685,6 +694,35 @@
                 document.getElementById('search-btn').disabled = false;
             }
         }
+        
+        function normalizeAndValidateDomain(input) {
+            try {
+                input = input.trim().toLowerCase();
+
+                // Add protocol if missing (required for URL parsing)
+                if (!input.startsWith('http://') && !input.startsWith('https://')) {
+                    input = 'https://' + input;
+                }
+
+                const url = new URL(input);
+                let domain = url.hostname;
+
+                // Remove www.
+                domain = domain.replace(/^www\./, '');
+
+                // Domain validation regex
+                const domainRegex = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.[a-z]{2,})+$/;
+
+                if (!domainRegex.test(domain)) {
+                    return null;
+                }
+
+                return domain;
+            } catch (e) {
+                return null;
+            }
+    }
+
 
         function displayResults(data) {
             const limit = data.limit || 20;
