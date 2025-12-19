@@ -535,7 +535,7 @@
 
                 <div class="source-filters-inline">
                     <div class="filter-checkbox">
-                        <input type="checkbox" id="filter-google" checked>
+                        <input type="checkbox" id="filter-google" disabled>
                         <label for="filter-google">Google Reviews</label>
                     </div>
                     <div class="filter-checkbox">
@@ -615,7 +615,6 @@
                         
             const rawInput = document.getElementById('domain').value;
             const domain = normalizeAndValidateDomain(rawInput);
-            
             if (!domain) {
                 showError('Please enter a valid domain name (e.g., ubereats.com)');
                 return;
@@ -678,7 +677,12 @@
                 }
 
                 allReviews = data.reviews || [];
+                
+                console.log('Fetched reviews:', data);
                 displayResults(data);
+                if (data.trustpilot_run_id) {
+                    pollTrustpilotReviews(data.trustpilot_run_id);
+                }
             } catch (error) {
                 // Handle different types of errors
                 if (error.name === 'AbortError' || error.message.includes('timeout')) {
@@ -695,7 +699,7 @@
             }
         }
         
-        function normalizeAndValidateDomain(input) {
+    function normalizeAndValidateDomain(input) {
             try {
                 input = input.trim().toLowerCase();
 
@@ -858,6 +862,24 @@
                 fetchReviews();
             }
         });
+        
+ function pollTrustpilotReviews(runId) {
+    const interval = setInterval(async () => {
+        const res = await fetch(`/api/trustpilot/reviews?run_id=${runId}`);
+        const data = await res.json();
+
+        if (data.status === 'completed') {
+            clearInterval(interval);
+
+            // ✅ Merge Trustpilot reviews
+            allReviews = allReviews.concat(data.reviews);
+
+            // Re-render UI
+            filterReviews(currentFilter);
+        }
+    }, 8000);
+}
+
     </script>
 </body>
 </html>

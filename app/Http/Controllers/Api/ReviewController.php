@@ -74,15 +74,28 @@ class ReviewController extends Controller
             $totalReviews += count($google['reviews'] ?? []);
         }
 
+        // if (in_array('trustpilot', $sources)) {
+        //     $trust = $this->fetchFromTrustpilot($domain, $limit);
+
+        //     if (!empty($trust['summary'])) {
+        //         $ratings['trustpilot'] = $trust['summary'];
+        //     }
+
+        //     $allReviews   = array_merge($allReviews, $trust['reviews'] ?? []);
+        //     $totalReviews += count($trust['reviews'] ?? []);
+        // }
+        
+        
         if (in_array('trustpilot', $sources)) {
-            $trust = $this->fetchFromTrustpilot($domain, $limit);
+            $trustResult = $this->fetchFromTrustpilot($domain, $limit);
+            $runId = $trustResult['run_id'] ?? null;
 
-            if (!empty($trust['summary'])) {
-                $ratings['trustpilot'] = $trust['summary'];
+            if ($runId) {
+                // Dispatch background job
+                TrustpilotFetchJob::dispatch($runId, $limit);
+
+                $ratings['trustpilot'] = ['rating' => 0, 'total' => 0]; // temporary placeholder
             }
-
-            $allReviews   = array_merge($allReviews, $trust['reviews'] ?? []);
-            $totalReviews += count($trust['reviews'] ?? []);
         }
 
         /* ======================================================
@@ -115,22 +128,31 @@ class ReviewController extends Controller
         /* ======================================================
         4) Final response (matches DB response exactly)
         ====================================================== */
-        return response()->json([
+                
+            return response()->json([
             'domain'        => $domain,
             'sources'       => $sources,
             'ratings'       => $ratings,
             'total_reviews' => $totalReviews,
             'limit'         => $limit,
+
+            // Google reviews are already formatted
             'reviews'       => collect($allReviews)->map(fn ($r) => [
                 'source' => $r['source'],
                 'rating' => $r['rating'],
                 'text'   => $r['text'],
                 'date'   => !empty($r['date'])
-                ? \Carbon\Carbon::parse($r['date'])->format('d-m-Y')
-                : null,
+                    ? \Carbon\Carbon::parse($r['date'])->format('d-m-Y')
+                    : null,
                 'author' => $r['author'] ?? null,
             ])->values(),
+
+            // 👇 VERY IMPORTANT
+            'trustpilot_run_id' => $runId ?? null
         ]);
+
+        
+        
     }
 
     protected function fetchFromGoogle(string $domain, int $limit): array
@@ -214,20 +236,16 @@ class ReviewController extends Controller
             'summary' => $summary,
         ];
     }
-
+    
     protected function fetchFromTrustpilot(string $domain, int $limit = 20): array
-{
-    set_time_limit(180);
+    {
+        $token   = config('apify.token');
+        $actorId = 'nikita-sviridenko~trustpilot-reviews-scraper';
+        $companyDomain = str_replace(['https://', 'http://', 'www.'], '', $domain);
 
-    $token   = config('apify.token');
-    $actorId = 'nikita-sviridenko~trustpilot-reviews-scraper';
-
-    $companyDomain = str_replace(['https://', 'http://', 'www.'], '', $domain);
-
-    $runRes = Http::withHeaders([
+        $runRes = Http::withHeaders([
             'Content-Type' => 'application/json',
-        ])
-        ->post("https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}", [
+        ])->post("https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}", [
             "companyDomain" => $companyDomain,
             "contentToExtract" => "reviews",
             "sortBy" => "recency",
@@ -239,78 +257,113 @@ class ReviewController extends Controller
             ]
         ]);
 
-    if (!$runRes->successful()) {
-        \Log::error('Trustpilot run failed', [
-            'body' => $runRes->body()
-        ]);
-        return ['reviews' => [], 'summary' => null];
-    }
+        if (!$runRes->successful()) {
+            \Log::error('Trustpilot run failed', ['body' => $runRes->body()]);
+            return ['reviews' => [], 'summary' => null, 'run_id' => null];
+        }
 
-    $run = $runRes->json('data');
-    $get_run_id = $run['id'] ?? null;
-    $datasetId = $run['defaultDatasetId'];
+        $run = $runRes->json('data');
+        $runId = $run['id'] ?? null;
+
+        // Return immediately with run ID
+        return ['reviews' => [], 'summary' => null, 'run_id' => $runId];
+    }
     
-    if (!empty($get_run_id) && !empty($datasetId))
-    {
-        // cheeck for status 
+    //php artisan make:job TrustpilotFetchJob
+
+
+
+//     protected function fetchFromTrustpilot(string $domain, int $limit = 20): array
+// {
+//     set_time_limit(180);
+
+//     $token   = config('apify.token');
+//     $actorId = 'nikita-sviridenko~trustpilot-reviews-scraper';
+
+//     $companyDomain = str_replace(['https://', 'http://', 'www.'], '', $domain);
+
+//     $runRes = Http::withHeaders([
+//             'Content-Type' => 'application/json',
+//         ])
+//         ->post("https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}", [
+//             "companyDomain" => $companyDomain,
+//             "contentToExtract" => "reviews",
+//             "sortBy" => "recency",
+//             "filterByVerified" => true,
+//             "startFromPageNumber" => 1,
+//             "endAtPageNumber" => 1,
+//             "proxyConfiguration" => [
+//                 "useApifyProxy" => true
+//             ]
+//         ]);
+
+//     if (!$runRes->successful()) {
+//         \Log::error('Trustpilot run failed', [
+//             'body' => $runRes->body()
+//         ]);
+//         return ['reviews' => [], 'summary' => null];
+//     }
+
+//     $run = $runRes->json('data');
+//     $get_run_id = $run['id'] ?? null;
+//     $datasetId = $run['defaultDatasetId'];
+    
+//     if (!empty($get_run_id) && !empty($datasetId))
+//     {
+//         // cheeck for status 
         
-        do {
-            $response = Http::get("https://api.apify.com/v2/actor-runs/{$get_run_id}?token={$token}");
-            $status = $response->json('data.status');
+//         do {
+//             $response = Http::get("https://api.apify.com/v2/actor-runs/{$get_run_id}?token={$token}");
+//             $status = $response->json('data.status');
 
-            if ($status === 'SUCCEEDED') {
-                $datasetId = $response->json('data.defaultDatasetId');
-                // Fetch dataset
-                break;
-            }
+//             if ($status === 'SUCCEEDED') {
+//                 $datasetId = $response->json('data.defaultDatasetId');
+//                 // Fetch dataset
+//                 break;
+//             }
 
-            sleep(10); // wait 10 seconds before next check
-        } while ($status !== 'FAILED');
+//             sleep(10); // wait 10 seconds before next check
+//         } while ($status !== 'FAILED');
                 
-    }
-    else
-    {
-        \Log::error('Trustpilot run has no ID', [
-            'run' => $run
-        ]);
-        return ['reviews' => [], 'summary' => null];
-    }
+//     }
+//     else
+//     {
+//         \Log::error('Trustpilot run has no ID', [
+//             'run' => $run
+//         ]);
+//         return ['reviews' => [], 'summary' => null];
+//     }
     
-   \Log::info('Trustpilot run succeeded', [
-        'run_id' => $get_run_id,
-        'dataset_id' => $datasetId,
-        'data'=> $response->json('data'),        
-    ]);
+//    \Log::info('Trustpilot run succeeded', [
+//         'run_id' => $get_run_id,
+//         'dataset_id' => $datasetId,
+//         'data'=> $response->json('data'),        
+//     ]);
     
-    $itemsRes = Http::timeout(60)->get(
-        "https://api.apify.com/v2/datasets/{$datasetId}/items?token={$token}&limit={$limit}"
-    );
+//     $itemsRes = Http::timeout(60)->get(
+//         "https://api.apify.com/v2/datasets/{$datasetId}/items?token={$token}&limit={$limit}"
+//     );
 
-    $items = $itemsRes->json() ?? [];
+//     $items = $itemsRes->json() ?? [];
 
-    $reviews = collect($items)->map(fn ($r) => [
-        'source' => 'trustpilot',
-        'rating' => (int) ($r['ratingValue'] ?? 0),
-        'text'   => $r['reviewBody'] ?? '',
-        'date'   => $r['datePublished'] ?? null,
-        'author' => $r['authorName'] ?? 'Anonymous',
-    ])->toArray();
+//     $reviews = collect($items)->map(fn ($r) => [
+//         'source' => 'trustpilot',
+//         'rating' => (int) ($r['ratingValue'] ?? 0),
+//         'text'   => $r['reviewBody'] ?? '',
+//         'date'   => $r['datePublished'] ?? null,
+//         'author' => $r['authorName'] ?? 'Anonymous',
+//     ])->toArray();
 
-    return [
-        'reviews' => $reviews,
-        'summary' => [
-            'rating' => count($reviews)
-                ? round(collect($reviews)->avg('rating'), 1)
-                : 0,
-            'total' => count($reviews),
-        ],
-    ];
-}
-
-
-
-
-
+//     return [
+//         'reviews' => $reviews,
+//         'summary' => [
+//             'rating' => count($reviews)
+//                 ? round(collect($reviews)->avg('rating'), 1)
+//                 : 0,
+//             'total' => count($reviews),
+//         ],
+//     ];
+// }
 
 
 ///////////////////////////////
@@ -376,6 +429,31 @@ class ReviewController extends Controller
 //         ],
 //     ];
 // }
+
+
+public function getTrustpilotReviews(Request $request)
+{
+    $request->validate([
+        'run_id' => 'required|string',
+    ]);
+
+    $runId = $request->input('run_id');
+
+    $reviews = Cache::get("trustpilot_reviews_{$runId}");
+
+    if (!$reviews) {
+        return response()->json([
+            'status' => 'processing',
+            'message' => 'Reviews are still being fetched. Please wait.'
+        ]);
+    }
+
+    return response()->json([
+        'status' => 'completed',
+        'reviews' => $reviews
+    ]);
+}
+
 
 
 

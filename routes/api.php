@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Route;
 Route::post('/reviews/fetch', [ReviewController::class, 'fetchReviews']);
 Route::get('/reviews', [ReviewController::class, 'getReviews']);
 
+Route::get('/trustpilot/reviews', [ReviewController::class, 'getTrustpilotReviews']);
+
+
 Route::post('/api/reviews/fetch', [ApiReviewController::class, 'fetch'])
     ->name('api.reviews.fetch');
 
