@@ -5,11 +5,9 @@ use App\Http\Controllers\Admin\AdminController;
 use Illuminate\Support\Facades\Route;
 
 // Public API routes
-Route::post('/reviews/fetch', [ReviewController::class, 'fetchReviews']);
-Route::get('/reviews', [ReviewController::class, 'getReviews']);
-
-Route::post('/api/reviews/fetch', [ApiReviewController::class, 'fetch'])
-    ->name('api.reviews.fetch');
+Route::post('/reviews/scrape', [ReviewController::class, 'scrapeReviews']);
+// Route::get('/reviews', [ReviewController::class, 'getReviews']);
+Route::post('/get-reviews', [ReviewController::class, 'getReviews']);
 
 // Admin routes
 Route::prefix('admin')->group(function () {

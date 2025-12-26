@@ -16,7 +16,7 @@ class ReviewController extends Controller
     public function __construct()
     {
     }
-    public function fetchReviews(Request $request)
+    public function scrapeReviews(Request $request)
     {
         $request->validate([
             'domain'  => 'required|string',
@@ -27,13 +27,29 @@ class ReviewController extends Controller
         $domain  = strtolower(trim($request->input('domain')));
         $sources = $request->input('sources');
         $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));
-
+        
+        
         /* ======================================================
         1) Try DB cache
         ====================================================== */
         $search = Search::where('domain', $domain)->first();
-
-        if ($search && $search->status === 'completed') {
+        
+        \Log::info('ScrapeReviews fun called');
+        
+        if ($search && in_array($search->status, ['completed', 'partial'])) {
+            
+            if ($search->status === 'partial') {
+                return response()->json([
+                    'status' => 'processing',
+                    'message' => 'Google reviews ready. Trustpilot still processing.',
+                ], 202);
+            }
+                        
+            \Log::info('Found completed search in DB', [
+                'domain'  => $domain,
+                'sources' => $sources,
+                'limit'   => $limit,
+            ]);
             $reviews = $search->reviews()
                 ->whereIn('source', $sources)
                 ->orderByDesc('date')
@@ -59,50 +75,31 @@ class ReviewController extends Controller
                 ]);
             }
         }
-
-            if ($search && $search->status === 'pending') {
-            return response()->json([
-                'status'  => 'processing',
-                'domain'  => $domain,
-                'message' => 'Reviews are being fetched. Please wait...',
-                'sources'       => $sources,
-                'ratings'       => [],
-                'total_reviews' => 0,
-                'limit'         => $limit,
-                'reviews'       => [],
-            ], 202);
-            }
-
-            ScrapeReviewsJob::dispatch($domain, $sources, $limit);
-
-            
-            return response()->json([
-                'status'  => 'processing',
-                'domain'  => $domain,
-                'message' => 'Scraping started. Please wait...',
-                'sources'       => $sources,
-                'ratings'       => [],
-                'total_reviews' => 0,
-                'limit'         => $limit,
-                'reviews'       => [],
-            ], 202);
-            
         
+                
+        \Log::info('Starting Dispatch ScrapeReviewsJob', [
+            'domain'  => $domain,
+            'sources' => $sources,
+            'limit'   => $limit,
+        ]);
 
-        /* ======================================================
-        4) Final response (matches DB response exactly)
-        ====================================================== */
-
+        ScrapeReviewsJob::dispatch($domain, $sources, $limit);   
+        
+        \Log::info('End Dispatched ScrapeReviewsJob');
+            
         return response()->json([
         'status'  => 'processing',
         'domain'  => $domain,
-        'sources' => $sources,
         'message' => 'Reviews are being fetched. Please try again in 1–2 minutes.',
+        'sources' => $sources,
+        'ratings'       => [],
+        'total_reviews' => 0,
+        'limit'         => $limit,
+        'reviews'       => [],
         ], 202);
-
     }
 
-    protected function fetchFromGoogle(string $domain, int $limit): array
+    function fetchFromGoogle(string $domain, int $limit): array
     {
         $token   = config('apify.token');
         $actorId = config('apify.google_actor');
@@ -183,135 +180,86 @@ class ReviewController extends Controller
             'summary' => $summary,
         ];
     }
+    
+    
+    public function startTrustpilotRun(string $domain): array
+    {
+        $token   = config('apify.token');
+        $actorId = 'nikita-sviridenko~trustpilot-reviews-scraper';
 
-protected function fetchFromTrustpilot(string $domain, int $limit): array
-{
-    $token   = config('apify.token');              // e.g. env('APIFY_TOKEN')
-    $actorId = config('apify.trustpilot_actor');   // e.g. 'nikita-sviridenko~trustpilot-reviews-scraper'
+        $companyDomain = str_replace(['https://', 'http://', 'www.'], '', $domain);
 
-    if (!$actorId || !$token) {
-        \Log::error('Trustpilot actor ID or token missing', [
-            'actorId'  => $actorId,
-            'hasToken' => !empty($token),
-        ]);
-        return ['reviews' => [], 'summary' => null];
+        $response = Http::post(
+            "https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}",
+            [
+                "companyDomain" => $companyDomain,
+                "contentToExtract" => "reviews",
+                "sortBy" => "recency",
+                "filterByVerified" => true,
+                "startFromPageNumber" => 1,
+                "endAtPageNumber" => 1,
+                "proxyConfiguration" => ["useApifyProxy" => true]
+            ]
+        );
+
+        if (!$response->successful()) {
+            throw new \Exception('Failed to start Trustpilot actor');
+        }
+
+        $run = $response->json('data');
+
+        return [
+            'run_id' => $run['id'],
+            'dataset_id' => $run['defaultDatasetId']
+        ];
     }
+    
+    public function getReviews(Request $request)
+    {
+        
+        $domain  = strtolower(trim($request->input('domain')));
+        $sources = $request->input('sources', []);
+        $limit   = (int) ($request->input('limit') ?? 20);
+        
+        if (empty($domain)) {
+            return response()->json([
+                'message' => 'Domain parameter is required.',
+            ], 400);
+        }
 
-    // 1) Start actor run – this actor expects "companyDomain" and "maxReviews"
-    $run = Http::withToken($token)->post(
-        "https://api.apify.com/v2/acts/{$actorId}/runs",
-        [
-            'companyDomain' => $domain,   // <- required by this actor
-            'maxReviews'    => $limit,
-        ]
-    );
+        $search = Search::where('domain', $domain)->first();
+               
+        if (!$search || !in_array($search->status, ['completed','partial'])) {
+            return response()->json([
+                'status' => 'processing',
+                'message' => 'No completed reviews found for the specified domain.',
+            ], 202);
+        }
+                    
+        $reviews = $search->reviews()
+            ->whereIn('source', $sources)
+            ->orderByDesc('date')
+            ->limit($limit * count($sources))
+            ->get();
 
-    if (!$run->successful()) {
-        \Log::error('Trustpilot run start failed', [
-            'status' => $run->status(),
-            'body'   => $run->body(),
-        ]);
-        return ['reviews' => [], 'summary' => null];
-    }
-
-    $runId = data_get($run->json(), 'data.id');
-    if (!$runId) {
-        \Log::error('Trustpilot run id missing', ['response' => $run->json()]);
-        return ['reviews' => [], 'summary' => null];
-    }
-
-    // 2) Poll run status
-    $status    = 'RUNNING';
-    $datasetId = null;
-
-    for ($i = 0; $i < 60; $i++) {
-        sleep(2);
-
-        $statusRes = Http::withToken($token)
-            ->get("https://api.apify.com/v2/actor-runs/{$runId}");
-
-        if (!$statusRes->successful()) {
-            \Log::warning('Trustpilot status check failed', [
-                'status' => $statusRes->status(),
-                'body'   => $statusRes->body(),
+        if ($reviews->isNotEmpty()) {
+            return response()->json([
+                'status'  => $search->status,
+                'domain'        => $domain,
+                'message' => 'Reviews fetched successfully!',
+                'sources'       => $sources,
+                'ratings'       => $search->ratings ?? [],
+                'total_reviews' => $search->total_reviews ?? $reviews->count(),
+                'limit'         => $limit,
+                'reviews'       => $reviews->map(fn (Review $r) => [
+                    'source' => $r->source,
+                    'rating' => $r->rating,
+                    'text'   => $r->text,
+                    'date'   => optional($r->date)->format('d-m-Y'),
+                    'author' => $r->author,
+                ])->values(),
             ]);
-            break;
-        }
-
-        $data      = $statusRes->json('data');
-        $status    = $data['status'] ?? $status;
-        $datasetId = $data['defaultDatasetId'] ?? $datasetId;
-
-        if (in_array($status, ['SUCCEEDED', 'FAILED', 'ABORTED'], true)) {
-            break;
         }
     }
-
-    if ($status !== 'SUCCEEDED' || !$datasetId) {
-        \Log::warning('Trustpilot run not completed', [
-            'domain'    => $domain,
-            'status'    => $status,
-            'datasetId' => $datasetId,
-        ]);
-        return ['reviews' => [], 'summary' => null];
-    }
-
-    // 3) Fetch dataset items (flat list of reviews)
-    $itemsRes = Http::withToken($token)->get(
-        "https://api.apify.com/v2/datasets/{$datasetId}/items",
-        [
-            'format' => 'json',
-            'clean'  => true,
-            'desc'   => true,
-            'limit'  => $limit,   // ask API to cap at limit
-        ]
-    );
-
-    if (!$itemsRes->successful()) {
-        \Log::warning('Trustpilot dataset fetch failed', [
-            'status' => $itemsRes->status(),
-            'body'   => $itemsRes->body(),
-        ]);
-        return ['reviews' => [], 'summary' => null];
-    }
-
-    $items = $itemsRes->json();
-    if (empty($items)) {
-        return ['reviews' => [], 'summary' => null];
-    }
-
-    // 4) Map actor items => internal review format
-    $reviews = [];
-    foreach ($items as $r) {
-        $reviews[] = [
-            'source' => 'trustpilot',
-            'rating' => (int)($r['ratingValue'] ?? 0),
-            'text'   => trim($r['reviewBody'] ?? ''),
-            'date'   => $r['datePublished'] ?? null,
-            'author' => $r['authorName'] ?? null,
-        ];
-    }
-
-    // Newest first by date
-    usort($reviews, static function ($a, $b) {
-        return strcmp((string)($b['date'] ?? ''), (string)($a['date'] ?? ''));
-    });
-
-    // Build a simple summary
-    $summary = null;
-    if ($reviews) {
-        $count = count($reviews);
-        $avg   = $count ? array_sum(array_column($reviews, 'rating')) / $count : 0;
-        $summary = [
-            'rating' => round($avg, 2),
-            'total'  => $count,
-        ];
-    }
-
-    return [
-        'reviews' => array_slice($reviews, 0, $limit),
-        'summary' => $summary,
-    ];
-}
 }
 

@@ -6,507 +6,506 @@
     <!-- <meta name="csrf-token" content="{{ csrf_token() }}"> -->
     <title>Review Scraper</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-            min-height: 100vh;
-            padding: 0;
-        }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+                min-height: 100vh;
+                padding: 0;
+            }
 
-        .header {
-            background: #2c3e50;
-            color: white;
-            padding: 20px 0;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
+            .header {
+                background: #2c3e50;
+                color: white;
+                padding: 20px 0;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
 
-        .header-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
+            .header-content {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 0 20px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
 
-        .logo {
-            font-size: 24px;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+            .logo {
+                font-size: 24px;
+                font-weight: bold;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
 
-        .logo::before {
-            content: '⭐';
-            font-size: 28px;
-            color: #00B67A;
-        }
+            .logo::before {
+                content: '⭐';
+                font-size: 28px;
+                color: #00B67A;
+            }
 
-        .main-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 40px 20px;
-        }
+            .main-container {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 40px 20px;
+            }
 
-        /* Trustpilot-style Search Section */
-        .hero-section {
-            text-align: center;
-            margin-bottom: 60px;
-        }
+            /* Trustpilot-style Search Section */
+            .hero-section {
+                text-align: center;
+                margin-bottom: 60px;
+            }
 
-        .hero-title {
-            font-size: 48px;
-            font-weight: 700;
-            color: #2c3e50;
-            margin-bottom: 15px;
-            line-height: 1.2;
-        }
-
-        .hero-subtitle {
-            font-size: 20px;
-            color: #7f8c8d;
-            margin-bottom: 40px;
-        }
-
-        .search-box {
-            background: white;
-            border-radius: 16px;
-            padding: 40px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-            max-width: 800px;
-            margin: 0 auto;
-        }
-
-        .search-input-wrapper {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-
-        .search-input {
-            flex: 1;
-            padding: 18px 24px;
-            border: 2px solid #e0e0e0;
-            border-radius: 12px;
-            font-size: 16px;
-            transition: all 0.3s;
-        }
-
-        .search-input:focus {
-            outline: none;
-            border-color: #00B67A;
-            box-shadow: 0 0 0 3px rgba(0, 182, 122, 0.1);
-        }
-
-        .search-btn {
-            background: #00B67A;
-            color: white;
-            border: none;
-            padding: 18px 36px;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .search-btn:hover:not(:disabled) {
-            background: #00a066;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 182, 122, 0.3);
-        }
-
-        .search-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .search-btn::before {
-            content: '🔍';
-            font-size: 18px;
-        }
-
-        .source-filters-inline {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin-top: 20px;
-        }
-
-        .filter-checkbox {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .filter-checkbox:hover {
-            background: #e9ecef;
-        }
-
-        .filter-checkbox input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            cursor: pointer;
-            accent-color: #00B67A;
-        }
-
-        .filter-checkbox label {
-            margin: 0;
-            cursor: pointer;
-            font-weight: 500;
-            color: #2c3e50;
-        }
-
-        .error {
-            background: #ffebee;
-            color: #c62828;
-            padding: 20px;
-            border-radius: 12px;
-            margin: 20px auto;
-            max-width: 800px;
-            border-left: 4px solid #c62828;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 60px 20px;
-            color: #7f8c8d;
-            font-size: 18px;
-        }
-
-        .loading::after {
-            content: '...';
-            animation: dots 1.5s steps(4, end) infinite;
-        }
-
-        @keyframes dots {
-            0%, 20% { content: '.'; }
-            40% { content: '..'; }
-            60%, 100% { content: '...'; }
-        }
-
-        /* Stats Section */
-        .stats-section {
-            background: white;
-            border-radius: 16px;
-            padding: 30px;
-            margin-bottom: 40px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        }
-
-        .stats-title {
-            font-size: 28px;
-            font-weight: 700;
-            color: #2c3e50;
-            margin-bottom: 25px;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-        }
-
-        .stat-card {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            padding: 25px;
-            border-radius: 12px;
-            border-left: 5px solid #00B67A;
-            transition: transform 0.3s;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-        }
-
-        .stat-label {
-            font-size: 14px;
-            color: #7f8c8d;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
-        }
-
-        .stat-value {
-            font-size: 32px;
-            font-weight: 700;
-            color: #2c3e50;
-        }
-
-        .stat-note {
-            margin-top: 10px;
-            font-size: 13px;
-            color: #7f8c8d;
-        }
-
-        /* Source Filter Buttons */
-        .source-filters {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        .source-filter-btn {
-            padding: 12px 24px;
-            border: 2px solid #e0e0e0;
-            background: white;
-            border-radius: 25px;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-size: 15px;
-            font-weight: 600;
-            color: #2c3e50;
-        }
-
-        .source-filter-btn:hover {
-            border-color: #00B67A;
-            color: #00B67A;
-            transform: translateY(-2px);
-        }
-
-        .source-filter-btn.active {
-            background: #00B67A;
-            color: white;
-            border-color: #00B67A;
-        }
-
-        /* Review Cards - Trustpilot Style */
-        .reviews-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 25px;
-            margin-top: 30px;
-        }
-
-        .review-card {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-            transition: all 0.3s;
-            border: 1px solid #e9ecef;
-        }
-
-        .review-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-        }
-
-        .review-header {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-
-        .reviewer-avatar {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #00B67A 0%, #00a066 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 20px;
-            font-weight: 700;
-            flex-shrink: 0;
-        }
-
-        .reviewer-info {
-            flex: 1;
-        }
-
-        .reviewer-name {
-            font-weight: 600;
-            color: #2c3e50;
-            font-size: 16px;
-            margin-bottom: 5px;
-        }
-
-        .review-rating {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .star {
-            color: #FFB800;
-            font-size: 18px;
-        }
-
-        .star.empty {
-            color: #e0e0e0;
-        }
-
-        .review-text {
-            color: #34495e;
-            line-height: 1.6;
-            margin-bottom: 15px;
-            font-size: 15px;
-        }
-
-        .review-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-top: 15px;
-            border-top: 1px solid #e9ecef;
-        }
-
-        .review-date {
-            color: #7f8c8d;
-            font-size: 13px;
-        }
-
-        .source-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .source-badge.google {
-            background: #4285F4;
-            color: white;
-        }
-
-        .source-badge.trustpilot {
-            background: #00B67A;
-            color: white;
-        }
-
-        .no-reviews {
-            text-align: center;
-            padding: 80px 20px;
-            color: #7f8c8d;
-        }
-
-        .no-reviews-icon {
-            font-size: 64px;
-            margin-bottom: 20px;
-        }
-
-        .no-reviews-text {
-            font-size: 18px;
-            font-weight: 600;
-        }
-
-        @media (max-width: 768px) {
             .hero-title {
-                font-size: 32px;
+                font-size: 48px;
+                font-weight: 700;
+                color: #2c3e50;
+                margin-bottom: 15px;
+                line-height: 1.2;
             }
 
             .hero-subtitle {
-                font-size: 16px;
+                font-size: 20px;
+                color: #7f8c8d;
+                margin-bottom: 40px;
             }
 
             .search-box {
-                padding: 25px;
+                background: white;
+                border-radius: 16px;
+                padding: 40px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+                max-width: 800px;
+                margin: 0 auto;
             }
 
             .search-input-wrapper {
-                flex-direction: column;
+                display: flex;
+                gap: 12px;
+                margin-bottom: 20px;
+            }
+
+            .search-input {
+                flex: 1;
+                padding: 18px 24px;
+                border: 2px solid #e0e0e0;
+                border-radius: 12px;
+                font-size: 16px;
+                transition: all 0.3s;
+            }
+
+            .search-input:focus {
+                outline: none;
+                border-color: #00B67A;
+                box-shadow: 0 0 0 3px rgba(0, 182, 122, 0.1);
             }
 
             .search-btn {
-                width: 100%;
-                justify-content: center;
+                background: #00B67A;
+                color: white;
+                border: none;
+                padding: 18px 36px;
+                border-radius: 12px;
+                font-size: 16px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s;
+                display: flex;
+                align-items: center;
+                gap: 8px;
             }
 
-            .reviews-grid {
-                grid-template-columns: 1fr;
+            .search-btn:hover:not(:disabled) {
+                background: #00a066;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0, 182, 122, 0.3);
+            }
+
+            .search-btn:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+                transform: none;
+            }
+
+            .search-btn::before {
+                content: '🔍';
+                font-size: 18px;
+            }
+
+            .source-filters-inline {
+                display: flex;
+                gap: 20px;
+                justify-content: center;
+                flex-wrap: wrap;
+                margin-top: 20px;
+            }
+
+            .filter-checkbox {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px 20px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.3s;
+            }
+
+            .filter-checkbox:hover {
+                background: #e9ecef;
+            }
+
+            .filter-checkbox input[type="checkbox"] {
+                width: 20px;
+                height: 20px;
+                cursor: pointer;
+                accent-color: #00B67A;
+            }
+
+            .filter-checkbox label {
+                margin: 0;
+                cursor: pointer;
+                font-weight: 500;
+                color: #2c3e50;
+            }
+
+            .error {
+                background: #ffebee;
+                color: #c62828;
+                padding: 20px;
+                border-radius: 12px;
+                margin: 20px auto;
+                max-width: 800px;
+                border-left: 4px solid #c62828;
+            }
+
+            .loading {
+                text-align: center;
+                padding: 60px 20px;
+                color: #7f8c8d;
+                font-size: 18px;
+            }
+
+            .loading::after {
+                content: '...';
+                animation: dots 1.5s steps(4, end) infinite;
+            }
+
+            @keyframes dots {
+                0%, 20% { content: '.'; }
+                40% { content: '..'; }
+                60%, 100% { content: '...'; }
+            }
+
+            /* Stats Section */
+            .stats-section {
+                background: white;
+                border-radius: 16px;
+                padding: 30px;
+                margin-bottom: 40px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            }
+
+            .stats-title {
+                font-size: 28px;
+                font-weight: 700;
+                color: #2c3e50;
+                margin-bottom: 25px;
             }
 
             .stats-grid {
-                grid-template-columns: 1fr;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 20px;
             }
+
+            .stat-card {
+                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                padding: 25px;
+                border-radius: 12px;
+                border-left: 5px solid #00B67A;
+                transition: transform 0.3s;
+            }
+
+            .stat-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+            }
+
+            .stat-label {
+                font-size: 14px;
+                color: #7f8c8d;
+                margin-bottom: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                font-weight: 600;
+            }
+
+            .stat-value {
+                font-size: 32px;
+                font-weight: 700;
+                color: #2c3e50;
+            }
+
+            .stat-note {
+                margin-top: 10px;
+                font-size: 13px;
+                color: #7f8c8d;
+            }
+
+            /* Source Filter Buttons */
+            .source-filters {
+                display: flex;
+                gap: 12px;
+                margin-bottom: 30px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .source-filter-btn {
+                padding: 12px 24px;
+                border: 2px solid #e0e0e0;
+                background: white;
+                border-radius: 25px;
+                cursor: pointer;
+                transition: all 0.3s;
+                font-size: 15px;
+                font-weight: 600;
+                color: #2c3e50;
+            }
+
+            .source-filter-btn:hover {
+                border-color: #00B67A;
+                color: #00B67A;
+                transform: translateY(-2px);
+            }
+
+            .source-filter-btn.active {
+                background: #00B67A;
+                color: white;
+                border-color: #00B67A;
+            }
+
+            /* Review Cards - Trustpilot Style */
+            .reviews-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+                gap: 25px;
+                margin-top: 30px;
+            }
+
+            .review-card {
+                background: white;
+                border-radius: 12px;
+                padding: 25px;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+                transition: all 0.3s;
+                border: 1px solid #e9ecef;
+            }
+
+            .review-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            }
+
+            .review-header {
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                margin-bottom: 15px;
+            }
+
+            .reviewer-avatar {
+                width: 50px;
+                height: 50px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #00B67A 0%, #00a066 100%);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 20px;
+                font-weight: 700;
+                flex-shrink: 0;
+            }
+
+            .reviewer-info {
+                flex: 1;
+            }
+
+            .reviewer-name {
+                font-weight: 600;
+                color: #2c3e50;
+                font-size: 16px;
+                margin-bottom: 5px;
+            }
+
+            .review-rating {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            }
+
+            .star {
+                color: #FFB800;
+                font-size: 18px;
+            }
+
+            .star.empty {
+                color: #e0e0e0;
+            }
+
+            .review-text {
+                color: #34495e;
+                line-height: 1.6;
+                margin-bottom: 15px;
+                font-size: 15px;
+            }
+
+            .review-footer {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding-top: 15px;
+                border-top: 1px solid #e9ecef;
+            }
+
+            .review-date {
+                color: #7f8c8d;
+                font-size: 13px;
+            }
+
+            .source-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 12px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: 600;
+                text-transform: uppercase;
+            }
+
+            .source-badge.google {
+                background: #4285F4;
+                color: white;
+            }
+
+            .source-badge.trustpilot {
+                background: #00B67A;
+                color: white;
+            }
+
+            .no-reviews {
+                text-align: center;
+                padding: 80px 20px;
+                color: #7f8c8d;
+            }
+
+            .no-reviews-icon {
+                font-size: 64px;
+                margin-bottom: 20px;
+            }
+
+            .no-reviews-text {
+                font-size: 18px;
+                font-weight: 600;
+            }
+
+            @media (max-width: 768px) {
+                .hero-title {
+                    font-size: 32px;
+                }
+
+                .hero-subtitle {
+                    font-size: 16px;
+                }
+
+                .search-box {
+                    padding: 25px;
+                }
+
+                .search-input-wrapper {
+                    flex-direction: column;
+                }
+
+                .search-btn {
+                    width: 100%;
+                    justify-content: center;
+                }
+
+                .reviews-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                .stats-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+            
+            /* /////// reviews in tabular formate css */
+            .reviews-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
         }
-        
-        /* /////// reviews in tabular formate css */
-        .reviews-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: white;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-}
 
-.reviews-table th,
-.reviews-table td {
-    padding: 14px 16px;
-    text-align: left;
-    border-bottom: 1px solid #e9ecef;
-    vertical-align: top;
-}
+        .reviews-table th,
+        .reviews-table td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: top;
+        }
 
-.reviews-table th {
-    background: #f4f6f8;
-    font-weight: 700;
-    color: #2c3e50;
-    font-size: 14px;
-    text-transform: uppercase;
-}
+        .reviews-table th {
+            background: #f4f6f8;
+            font-weight: 700;
+            color: #2c3e50;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
 
-.reviews-table td {
-    font-size: 14px;
-    color: #34495e;
-}
+        .reviews-table td {
+            font-size: 14px;
+            color: #34495e;
+        }
 
-.reviews-table tr:hover {
-    background: #f9fbfc;
-}
+        .reviews-table tr:hover {
+            background: #f9fbfc;
+        }
 
-.rating-stars {
-    color: #FFB800;
-    font-size: 16px;
-}
+        .rating-stars {
+            color: #FFB800;
+            font-size: 16px;
+        }
 
-.source-badge-table {
-    padding: 6px 12px;
-    border-radius: 14px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    display: inline-block;
-}
+        .source-badge-table {
+            padding: 6px 12px;
+            border-radius: 14px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            display: inline-block;
+        }
 
-.source-badge-table.google {
-    background: #4285F4;
-    color: #fff;
-}
+        .source-badge-table.google {
+            background: #4285F4;
+            color: #fff;
+        }
 
-.source-badge-table.trustpilot {
-    background: #00B67A;
-    color: #fff;
-}
-
+        .source-badge-table.trustpilot {
+            background: #00B67A;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -530,7 +529,7 @@
                         placeholder="Search company or domain (e.g., ubereats.com)" 
                         value=""
                     >
-                    <button id="search-btn" class="search-btn" onclick="fetchReviews()">Search</button>
+                    <button id="search-btn" class="search-btn" onclick="scarpeReviews()">Search</button>
                 </div>
 
                 <div class="source-filters-inline">
@@ -605,108 +604,196 @@
         let allReviews = [];
         let currentFilter = 'all';
 
-       async function fetchReviews() {
-    const domain = document.getElementById('domain').value.trim();
-    if (!domain) {
-        showError('Please enter a domain');
-        return;
-    }
-
-    const sources = [];
-    if (document.getElementById('filter-google').checked) {
-        sources.push('google');
-    }
-    if (document.getElementById('filter-trustpilot').checked) {
-        sources.push('trustpilot');
-    }
-
-    if (sources.length === 0) {
-        showError('Please select at least one source');
-        return;
-    }
-
-    // UI start
-    document.getElementById('error-message').style.display = 'none';
-    document.getElementById('loading').style.display = 'block';
-    document.getElementById('loading').innerText = 'Fetching reviews, please wait...';
-    document.getElementById('results').style.display = 'none';
-    document.getElementById('search-btn').disabled = true;
-
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 90000);
-
-        const response = await fetch('/api/reviews/fetch', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-            },
-            body: JSON.stringify({
-                domain: domain,
-                sources: sources,
-                limit: 20
-            }),
-            signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        const contentType = response.headers.get('content-type');
-        let data;
-
-        if (contentType && contentType.includes('application/json')) {
-            data = await response.json();
-        } else {
-            const text = await response.text();
-            console.error('Non-JSON response:', text.substring(0, 500));
-            throw new Error('Invalid server response');
+    async function scarpeReviews() {
+        const domain = document.getElementById('domain').value.trim();
+        if (!domain) {
+            showError('Please enter a domain');
+            return;
         }
 
-        /* ======================================================
-           🔹 NEW PART – HANDLE BACKGROUND PROCESSING RESPONSE
-        ====================================================== */
-        if (data.status === 'processing') {
-            document.getElementById('loading').innerText =
-                'Scraping reviews in background… this may take up to 1–2 minutes.';
-
-            // Auto retry after 15 seconds
-            setTimeout(() => {
-                fetchReviews();
-            }, 15000);
-
-            return; // 🔴 VERY IMPORTANT: stop further execution
+        const sources = [];
+        if (document.getElementById('filter-google').checked) {
+            sources.push('google');
         }
-        /* ====================================================== */
-
-        if (!response.ok) {
-            throw new Error(data.error || 'Failed to fetch reviews');
+        if (document.getElementById('filter-trustpilot').checked) {
+            sources.push('trustpilot');
         }
 
-        // Success
-        allReviews = data.reviews || [];
-        displayResults(data);
-
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            showError(
-                'Request timed out. Reviews are still being fetched in background. Please wait...'
-            );
-        } else {
-            showError(error.message || 'An unexpected error occurred.');
+        if (sources.length === 0) {
+            showError('Please select at least one source');
+            return;
         }
 
-        console.error('Error fetching reviews:', error);
+        // UI start
+        document.getElementById('error-message').style.display = 'none';
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('loading').innerText = 'Fetching reviews, please wait...';
+        document.getElementById('results').style.display = 'none';
+        document.getElementById('search-btn').disabled = true;
 
-    } finally {
-        /*
-          ⚠️ IMPORTANT:
-          Do NOT hide loader or enable button here
-          because when status=processing we returned early
-        */
-        document.getElementById('search-btn').disabled = false;
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 90000);
+
+            const response = await fetch('/api/reviews/scrape', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
+                body: JSON.stringify({
+                    domain: domain,
+                    sources: sources,
+                    limit: 20
+                }),
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            const contentType = response.headers.get('content-type');
+            let data;
+
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                const text = await response.text();
+                console.error('Non-JSON response:', text.substring(0, 500));
+                throw new Error('Invalid server response');
+            }
+
+            console.log('Scrape response data here:', data);
+            
+          
+            if (data.status === 'processing') {
+                document.getElementById('loading').innerText =
+                    'Scraping reviews in background… Please wait.';
+
+                setTimeout(() => {
+                    getReviews();
+                }, 15000);
+
+                return;
+            }
+           
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to fetch reviews');
+            }
+            // Success
+            allReviews = data.reviews || [];
+            displayResults(data);
+
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                showError(
+                    'Request timed out. Reviews are still being fetched in background. Please wait...'
+                );
+            } else {
+                showError(error.message || 'An unexpected error occurred.');
+            }
+            console.error('Error fetching reviews:', error);
+        } finally {
+            /*
+            ⚠️ IMPORTANT:
+            Do NOT hide loader or enable button here
+            because when status=processing we returned early
+            */
+            document.getElementById('search-btn').disabled = false;
+        }
     }
-}
+    
+    
+    async function getReviews() {
+        const get_domain = document.getElementById('domain').value.trim();
+        if (!get_domain) {
+            showError('Please enter a domain');
+            return;
+        }
+
+        const get_sources = [];
+        if (document.getElementById('filter-google').checked) {
+            get_sources.push('google');
+        }
+        if (document.getElementById('filter-trustpilot').checked) {
+            get_sources.push('trustpilot');
+        }
+
+        if (get_sources.length === 0) {
+            showError('Please select at least one source');
+            return;
+        }
+
+        // UI start
+        document.getElementById('error-message').style.display = 'none';
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('loading').innerText = 'Fetching reviews, please wait...';
+        document.getElementById('results').style.display = 'none';
+        document.getElementById('search-btn').disabled = true;
+
+        try {
+            const get_controller = new AbortController();
+            const timeoutId = setTimeout(() => get_controller.abort(), 90000);
+
+            const get_response = await fetch('/api/get-reviews', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
+                body: JSON.stringify({
+                    domain: get_domain,
+                    sources: get_sources,
+                    limit: 20
+                }),
+                signal: get_controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            const contentType = get_response.headers.get('content-type');
+            let get_data;
+
+            if (contentType && contentType.includes('application/json')) {
+                get_data = await get_response.json();
+            } else {
+                const text = await get_response.text();
+                console.error('Non-JSON response:', text.substring(0, 500));
+                throw new Error('Invalid server response');
+            }
+
+            if (get_data.status === 'processing') {
+                document.getElementById('loading').innerText =
+                    'Scraping reviews in background… this may take up to 1–2 minutes.';
+
+                // Auto retry after 15 seconds
+                setTimeout(() => {
+                    getReviews();
+                }, 15000);
+
+                return;
+            }
+
+            if (!get_response.ok) {
+                throw new Error(get_data.error || 'Failed to fetch reviews');
+            }
+            // Success
+            allReviews = get_data.reviews || [];
+            displayResults(get_data);
+
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                showError(
+                    'Request timed out. Reviews are still being fetched in background. Please wait...'
+                );
+            } else {
+                showError(error.message || 'An unexpected error occurred.');
+            }
+            console.error('Error fetching reviews:', error);
+        } finally {
+            document.getElementById('search-btn').disabled = false;
+        }
+    }
 
         function displayResults(data) {
             const limit = data.limit || 20;
@@ -839,7 +926,7 @@
         // Allow Enter key to trigger search
         document.getElementById('domain').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
-                fetchReviews();
+                scarpeReviews();
             }
         });
     </script>
