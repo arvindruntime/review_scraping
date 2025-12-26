@@ -237,6 +237,42 @@ class ReviewController extends Controller
         ];
     }
     
+    protected function fetchFromTrustpilot(string $domain, int $limit = 20): array
+    {
+        $token   = config('apify.token');
+        $actorId = 'nikita-sviridenko~trustpilot-reviews-scraper';
+        $companyDomain = str_replace(['https://', 'http://', 'www.'], '', $domain);
+
+        $runRes = Http::withHeaders([
+            'Content-Type' => 'application/json',
+        ])->post("https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}", [
+            "companyDomain" => $companyDomain,
+            "contentToExtract" => "reviews",
+            "sortBy" => "recency",
+            "filterByVerified" => true,
+            "startFromPageNumber" => 1,
+            "endAtPageNumber" => 1,
+            "proxyConfiguration" => [
+                "useApifyProxy" => true
+            ]
+        ]);
+
+        if (!$runRes->successful()) {
+            \Log::error('Trustpilot run failed', ['body' => $runRes->body()]);
+            return ['reviews' => [], 'summary' => null, 'run_id' => null];
+        }
+
+        $run = $runRes->json('data');
+        $runId = $run['id'] ?? null;
+
+        // Return immediately with run ID
+        return ['reviews' => [], 'summary' => null, 'run_id' => $runId];
+    }
+    
+    //php artisan make:job TrustpilotFetchJob
+
+
+
 //     protected function fetchFromTrustpilot(string $domain, int $limit = 20): array
 // {
 //     set_time_limit(180);
