@@ -8,6 +8,8 @@ use App\Models\Search;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Http;
+use App\Jobs\ScrapeReviewsJob;
+
 
 class ReviewController extends Controller
 {
@@ -31,7 +33,7 @@ class ReviewController extends Controller
         ====================================================== */
         $search = Search::where('domain', $domain)->first();
 
-        if ($search) {
+        if ($search && $search->status === 'completed') {
             $reviews = $search->reviews()
                 ->whereIn('source', $sources)
                 ->orderByDesc('date')
@@ -40,7 +42,9 @@ class ReviewController extends Controller
 
             if ($reviews->isNotEmpty()) {
                 return response()->json([
+                    'status'  => 'completed',
                     'domain'        => $domain,
+                    'message' => 'Reviews fetched successfully!',
                     'sources'       => $sources,
                     'ratings'       => $search->ratings ?? [],
                     'total_reviews' => $search->total_reviews ?? 0,
@@ -56,81 +60,46 @@ class ReviewController extends Controller
             }
         }
 
-        /* ======================================================
-        2) Fetch from Apify
-        ====================================================== */
-        $allReviews   = [];
-        $ratings      = [];
-        $totalReviews = 0;
-
-        if (in_array('google', $sources)) {
-            $google = $this->fetchFromGoogle($domain, $limit);
-
-            if (!empty($google['summary'])) {
-                $ratings['google'] = $google['summary'];
+            if ($search && $search->status === 'pending') {
+            return response()->json([
+                'status'  => 'processing',
+                'domain'  => $domain,
+                'message' => 'Reviews are being fetched. Please wait...',
+                'sources'       => $sources,
+                'ratings'       => [],
+                'total_reviews' => 0,
+                'limit'         => $limit,
+                'reviews'       => [],
+            ], 202);
             }
 
-            $allReviews   = array_merge($allReviews, $google['reviews'] ?? []);
-            $totalReviews += count($google['reviews'] ?? []);
-        }
+            ScrapeReviewsJob::dispatch($domain, $sources, $limit);
 
-        if (in_array('trustpilot', $sources)) {
-            $trust = $this->fetchFromTrustpilot($domain, $limit);
-
-            if (!empty($trust['summary'])) {
-                $ratings['trustpilot'] = $trust['summary'];
-            }
-
-            $allReviews   = array_merge($allReviews, $trust['reviews'] ?? []);
-            $totalReviews += count($trust['reviews'] ?? []);
-        }
-
-        /* ======================================================
-        3) Store cache
-        ====================================================== */
-        DB::transaction(function () use ($domain, $sources, $ratings, $totalReviews, $allReviews) {
-            $search = Search::updateOrCreate(
-                ['domain' => $domain],
-                [
-                    'sources'       => $sources,
-                    'ratings'       => $ratings,
-                    'total_reviews' => $totalReviews,
-                ]
-            );
-
-            $search->reviews()->delete();
-
-            foreach ($allReviews as $r) {
-                Review::create([
-                    'search_id' => $search->id,
-                    'source'    => $r['source'],
-                    'rating'    => $r['rating'],
-                    'text'      => $r['text'],
-                    'date'      => $r['date'] ?? null,
-                    'author'    => $r['author'] ?? null,
-                ]);
-            }
-        });
+            
+            return response()->json([
+                'status'  => 'processing',
+                'domain'  => $domain,
+                'message' => 'Scraping started. Please wait...',
+                'sources'       => $sources,
+                'ratings'       => [],
+                'total_reviews' => 0,
+                'limit'         => $limit,
+                'reviews'       => [],
+            ], 202);
+            
+        
 
         /* ======================================================
         4) Final response (matches DB response exactly)
         ====================================================== */
+
         return response()->json([
-            'domain'        => $domain,
-            'sources'       => $sources,
-            'ratings'       => $ratings,
-            'total_reviews' => $totalReviews,
-            'limit'         => $limit,
-            'reviews'       => collect($allReviews)->map(fn ($r) => [
-                'source' => $r['source'],
-                'rating' => $r['rating'],
-                'text'   => $r['text'],
-                'date'   => !empty($r['date'])
-                ? \Carbon\Carbon::parse($r['date'])->format('d-m-Y')
-                : null,
-                'author' => $r['author'] ?? null,
-            ])->values(),
-        ]);
+        'status'  => 'processing',
+        'domain'  => $domain,
+        'sources' => $sources,
+        'message' => 'Reviews are being fetched. Please try again in 1–2 minutes.',
+        ], 202);
+
     }
 
     protected function fetchFromGoogle(string $domain, int $limit): array
@@ -344,7 +313,5 @@ protected function fetchFromTrustpilot(string $domain, int $limit): array
         'summary' => $summary,
     ];
 }
-
-
 }
 

@@ -539,7 +539,7 @@
                         <label for="filter-google">Google Reviews</label>
                     </div>
                     <div class="filter-checkbox">
-                        <input type="checkbox" id="filter-trustpilot" disabled>
+                        <input type="checkbox" id="filter-trustpilot">
                         <label for="filter-trustpilot">Trustpilot</label>
                     </div>
                 </div>
@@ -605,86 +605,108 @@
         let allReviews = [];
         let currentFilter = 'all';
 
-        async function fetchReviews() {
-            const domain = document.getElementById('domain').value.trim();
-            if (!domain) {
-                showError('Please enter a domain');
-                return;
-            }
+       async function fetchReviews() {
+    const domain = document.getElementById('domain').value.trim();
+    if (!domain) {
+        showError('Please enter a domain');
+        return;
+    }
 
-            const sources = [];
-            if (document.getElementById('filter-google').checked) {
-                sources.push('google');
-            }
-            if (document.getElementById('filter-trustpilot').checked) {
-                sources.push('trustpilot');
-            }
+    const sources = [];
+    if (document.getElementById('filter-google').checked) {
+        sources.push('google');
+    }
+    if (document.getElementById('filter-trustpilot').checked) {
+        sources.push('trustpilot');
+    }
 
-            if (sources.length === 0) {
-                showError('Please select at least one source');
-                return;
-            }
+    if (sources.length === 0) {
+        showError('Please select at least one source');
+        return;
+    }
 
-            document.getElementById('error-message').style.display = 'none';
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('results').style.display = 'none';
-            document.getElementById('search-btn').disabled = true;
+    // UI start
+    document.getElementById('error-message').style.display = 'none';
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('loading').innerText = 'Fetching reviews, please wait...';
+    document.getElementById('results').style.display = 'none';
+    document.getElementById('search-btn').disabled = true;
 
-            try {
-                // Set a longer timeout for the fetch request (90 seconds)
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 90000);
-                
-                const response = await fetch('/api/reviews/fetch', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                    },
-                    body: JSON.stringify({
-                        domain: domain,
-                        sources: sources,
-                        limit: 20
-                    }),
-                    signal: controller.signal
-                });
-                
-                clearTimeout(timeoutId);
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 90000);
 
-                // Check content type before parsing JSON
-                const contentType = response.headers.get('content-type');
-                let data;
-                
-                if (contentType && contentType.includes('application/json')) {
-                    data = await response.json();
-                } else {
-                    // If response is not JSON, get text to see what we got
-                    const text = await response.text();
-                    console.error('Non-JSON response received:', text.substring(0, 500));
-                    throw new Error('Server returned an invalid response. Please check server logs or contact support.');
-                }
+        const response = await fetch('/api/reviews/fetch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            },
+            body: JSON.stringify({
+                domain: domain,
+                sources: sources,
+                limit: 20
+            }),
+            signal: controller.signal
+        });
 
-                if (!response.ok) {
-                    throw new Error(data.error || 'Failed to fetch reviews');
-                }
+        clearTimeout(timeoutId);
 
-                allReviews = data.reviews || [];
-                displayResults(data);
-            } catch (error) {
-                // Handle different types of errors
-                if (error.name === 'AbortError' || error.message.includes('timeout')) {
-                    showError('Request timed out. The scraping process is taking longer than expected. Please try again or contact support.');
-                } else if (error instanceof SyntaxError && error.message.includes('JSON')) {
-                    showError('Server returned an invalid response. This may indicate a server configuration issue (504 Gateway Timeout). Please check that the Trustpilot scraper service is running and that server timeouts are configured correctly.');
-                } else {
-                    showError(error.message || 'An unexpected error occurred. Please try again.');
-                }
-                console.error('Error fetching reviews:', error);
-            } finally {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('search-btn').disabled = false;
-            }
+        const contentType = response.headers.get('content-type');
+        let data;
+
+        if (contentType && contentType.includes('application/json')) {
+            data = await response.json();
+        } else {
+            const text = await response.text();
+            console.error('Non-JSON response:', text.substring(0, 500));
+            throw new Error('Invalid server response');
         }
+
+        /* ======================================================
+           🔹 NEW PART – HANDLE BACKGROUND PROCESSING RESPONSE
+        ====================================================== */
+        if (data.status === 'processing') {
+            document.getElementById('loading').innerText =
+                'Scraping reviews in background… this may take up to 1–2 minutes.';
+
+            // Auto retry after 15 seconds
+            setTimeout(() => {
+                fetchReviews();
+            }, 15000);
+
+            return; // 🔴 VERY IMPORTANT: stop further execution
+        }
+        /* ====================================================== */
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to fetch reviews');
+        }
+
+        // Success
+        allReviews = data.reviews || [];
+        displayResults(data);
+
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            showError(
+                'Request timed out. Reviews are still being fetched in background. Please wait...'
+            );
+        } else {
+            showError(error.message || 'An unexpected error occurred.');
+        }
+
+        console.error('Error fetching reviews:', error);
+
+    } finally {
+        /*
+          ⚠️ IMPORTANT:
+          Do NOT hide loader or enable button here
+          because when status=processing we returned early
+        */
+        document.getElementById('search-btn').disabled = false;
+    }
+}
 
         function displayResults(data) {
             const limit = data.limit || 20;
