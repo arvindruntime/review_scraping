@@ -54,6 +54,20 @@ class CheckTrustpilotRunJob implements ShouldQueue
 
 
         if ($status !== 'SUCCEEDED') {
+            
+            
+            if ($this->attempts() >= 10) {
+                Search::where('domain', $this->domain)
+                    ->update(['status' => 'failed']);
+
+                \Log::error('Trustpilot run timed out', [
+                    'run_id' => $this->runId
+                ]);
+
+                return;
+            }
+    
+    
             // recheck after 20 sec
             self::dispatch(
                 $this->runId,
@@ -69,7 +83,7 @@ class CheckTrustpilotRunJob implements ShouldQueue
         $items = Http::get(
             "https://api.apify.com/v2/datasets/{$this->datasetId}/items",
             ['token' => $token, 'limit' => $this->limit]
-        )->json();
+        )->json() ?? [];
 
         $reviews = collect($items)->map(fn ($r) => [
             'source' => 'trustpilot',
@@ -80,12 +94,16 @@ class CheckTrustpilotRunJob implements ShouldQueue
         ])->toArray();
 
         // save reviews
-        $search = \App\Models\Search::where('domain', $this->domain)->first();
+        $search = Search::where('domain', $this->domain)->first();
             
         if (!$search) {
             \Log::error('Search not found for domain', [
                 'domain' => $this->domain
             ]);
+            return;
+        }
+        
+        if ($search->status === 'completed') {
             return;
         }
 
@@ -94,7 +112,7 @@ class CheckTrustpilotRunJob implements ShouldQueue
         ->delete();
     
         foreach ($reviews as $r) {
-            \App\Models\Review::create([
+            Review::create([
                 'search_id' => $search->id,
                 'source'    => 'trustpilot',
                 'rating'    => $r['rating'],
@@ -104,18 +122,51 @@ class CheckTrustpilotRunJob implements ShouldQueue
             ]);
         }
                 
-            $status = $search->reviews()->where('source', 'google')->exists()
+            // $status = $search->reviews()->where('source', 'google')->exists()
+            // ? 'completed'
+            // : 'partial';
+            $search->refresh();
+            $googleCount      = $search->google_reviews ?? 0;
+            $trustpilotCount  = count($reviews);
+            
+            $avgRating = collect($items)->avg('ratingValue');
+            $avgRating = $avgRating ? round($avgRating, 1) : 0;
+            
+            $finalRatings = array_filter([
+            'google' => $search->ratings['google'] ?? null,
+            'trustpilot' => [
+                'rating' => $avgRating,
+                'total'  => $trustpilotCount,
+            ],
+            ]);
+            
+            $status = ($googleCount > 0 || $trustpilotCount > 0)
             ? 'completed'
             : 'partial';
-    
+            
+            
             $search->update([
-                'ratings->trustpilot' => [
-                    'rating' => collect($items)->avg('ratingValue'),
-                    'total'  => count($items),
-                ],
-                'total_reviews' => Review::where('search_id', $search->id)->count(),
-                'status' => $status,
+            'ratings'             => $finalRatings,
+            'trustpilot_reviews'  => $trustpilotCount,
+            'total_reviews'       => $googleCount + $trustpilotCount,
+            'status'              => $status,
             ]);
+
+            \Log::info('Trustpilot reviews saved & search finalized', [
+            'domain' => $this->domain,
+            'google_reviews' => $googleCount,
+            'trustpilot_reviews' => $trustpilotCount,
+            'total_reviews' => $googleCount + $trustpilotCount,
+        ]);
+        
+            // $search->update([
+            //     'ratings->trustpilot' => [
+            //         'rating' => collect($items)->avg('ratingValue'),
+            //         'total'  => count($items),
+            //     ],
+            //     'total_reviews' => Review::where('search_id', $search->id)->count(),
+            //     'status' => $status,
+            // ]);
 
 
         \Log::info('Trustpilot reviews saved', [

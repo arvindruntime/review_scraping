@@ -81,13 +81,22 @@ class ScrapeReviewsJob implements ShouldQueue
                                     'author'    => $r['author'] ?? null,
                                 ]);
                             }
+                            
+                            $googleCount = count($allReviews);
 
                             $search->update([
                                 'sources' => $this->sources,
                                 'ratings->google' => $ratings['google'] ?? null,
-                                'total_reviews' => Review::where('search_id', $search->id)->count(),
+                                'google_reviews' => $googleCount,
                                 'status' => in_array('trustpilot', $this->sources) ? 'partial' : 'completed',
                             ]);
+
+                            // $search->update([
+                            //     'sources' => $this->sources,
+                            //     'ratings->google' => $ratings['google'] ?? null,
+                            //     'total_reviews' => Review::where('search_id', $search->id)->count(),
+                            //     'status' => in_array('trustpilot', $this->sources) ? 'partial' : 'completed',
+                            // ]);
 
                         });
                     }    

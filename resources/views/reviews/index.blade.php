@@ -682,6 +682,7 @@
             }
             // Success
             allReviews = data.reviews || [];
+            console.log('All reviews after scrape:', data);
             displayResults(data);
 
         } catch (error) {
@@ -796,6 +797,8 @@
     }
 
         function displayResults(data) {
+            
+            console.log('Displaying results with data:', data);
             const limit = data.limit || 20;
             // Display stats
             const statsGrid = document.getElementById('stats-grid');

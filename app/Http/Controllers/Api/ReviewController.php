@@ -82,7 +82,7 @@ class ReviewController extends Controller
             'sources' => $sources,
             'limit'   => $limit,
         ]);
-
+        
         ScrapeReviewsJob::dispatch($domain, $sources, $limit);   
         
         \Log::info('End Dispatched ScrapeReviewsJob');
@@ -229,12 +229,20 @@ class ReviewController extends Controller
 
         $search = Search::where('domain', $domain)->first();
                
-        if (!$search || !in_array($search->status, ['completed','partial'])) {
+        // if (!$search || !in_array($search->status, ['completed','partial'])) {
+        //     return response()->json([
+        //         'status' => 'processing',
+        //         'message' => 'No completed reviews found for the specified domain.',
+        //     ], 202);
+        // }
+        
+        if (!$search) {
             return response()->json([
                 'status' => 'processing',
-                'message' => 'No completed reviews found for the specified domain.',
+                'message' => 'Search not started yet',
             ], 202);
         }
+
                     
         $reviews = $search->reviews()
             ->whereIn('source', $sources)
