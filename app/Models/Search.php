@@ -12,6 +12,9 @@ class Search extends Model
         'sources',
         'ratings',
         'total_reviews',
+        'google_reviews',
+        'trustpilot_reviews',
+        'status',
     ];
 
     protected $casts = [

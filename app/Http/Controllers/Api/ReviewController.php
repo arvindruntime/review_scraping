@@ -87,27 +87,59 @@ class ReviewController extends Controller
         
         \Log::info('End Dispatched ScrapeReviewsJob');
             
+        // show processing response but only include counts/ratings for requested sources
+        $allRatings = $search->ratings ?? [];
+        $filteredRatings = [];
+        foreach ($sources as $s) {
+            $filteredRatings[$s] = $allRatings[$s] ?? null;
+        }
+        $googleCount = in_array('google', $sources) ? ($search->google_reviews ?? 0) : 0;
+        $trustCount = in_array('trustpilot', $sources) ? ($search->trustpilot_reviews ?? 0) : 0;
+
         return response()->json([
-        'status'  => 'processing',
-        'domain'  => $domain,
-        'message' => 'Reviews are being fetched. Please try again in 1–2 minutes.',
-        'sources' => $sources,
-        'ratings'       => [],
-        'total_reviews' => 0,
-        'limit'         => $limit,
-        'reviews'       => [],
+            'status'  => 'processing',
+            'domain'  => $domain,
+            'message' => 'Reviews are being fetched. Please try again in 1–2 minutes.',
+            'sources' => $sources,
+            'ratings' => $filteredRatings,
+            'google_reviews' => $googleCount,
+            'trustpilot_reviews' => $trustCount,
+            'total_reviews' => $googleCount + $trustCount,
+            'limit'         => $limit,
+            'reviews'       => [],
         ], 202);
     }
 
     function fetchFromGoogle(string $domain, int $limit): array
     {
+        // Prefer Google Places API (more authoritative for rating/total) when API key is configured
+        try {
+            $apiKey = env('GOOGLE_PLACES_API_KEY');
+            if (!empty($apiKey)) {
+                $service = app(\App\Services\GooglePlacesService::class);
+                $res = $service->getReviewsForDomain($domain, $limit);
+
+                return [
+                    'reviews' => $res['reviews'] ?? [],
+                    'summary' => [
+                        'rating' => isset($res['rating']) ? (float) $res['rating'] : null,
+                        'total'  => isset($res['total_reviews']) ? (int) $res['total_reviews'] : null,
+                    ],
+                ];
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('GooglePlacesService failed, falling back to Apify actor: ' . $e->getMessage());
+        }
+
+        // Fallback: use configured Apify Google actor
         $token   = config('apify.token');
         $actorId = config('apify.google_actor');
 
         $run = Http::post(
             "https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}",
             [
-                'searchStringsArray' => [$domain],
+                // Try company name (strip tld) and domain as fallbacks for better matching
+                'searchStringsArray' => [preg_replace('/^www\./', '', $domain), preg_replace('/\..*$/', '', $domain)],
                 'language'           => 'en',
                 'maxReviews'         => $limit,
                 'reviewsSort'        => 'newest',
@@ -247,27 +279,38 @@ class ReviewController extends Controller
         $reviews = $search->reviews()
             ->whereIn('source', $sources)
             ->orderByDesc('date')
-            ->limit($limit * count($sources))
+            ->limit(max(1, $limit * max(1, count($sources))))
             ->get();
 
-        if ($reviews->isNotEmpty()) {
-            return response()->json([
-                'status'  => $search->status,
-                'domain'        => $domain,
-                'message' => 'Reviews fetched successfully!',
-                'sources'       => $sources,
-                'ratings'       => $search->ratings ?? [],
-                'total_reviews' => $search->total_reviews ?? $reviews->count(),
-                'limit'         => $limit,
-                'reviews'       => $reviews->map(fn (Review $r) => [
-                    'source' => $r->source,
-                    'rating' => $r->rating,
-                    'text'   => $r->text,
-                    'date'   => optional($r->date)->format('d-m-Y'),
-                    'author' => $r->author,
-                ])->values(),
-            ]);
+        // Prepare ratings and counts only for requested sources so UI shows relevant cards
+        $allRatings = $search->ratings ?? [];
+        $filteredRatings = [];
+        foreach ($sources as $s) {
+            $filteredRatings[$s] = $allRatings[$s] ?? null;
         }
+
+        $googleCount = in_array('google', $sources) ? ($search->google_reviews ?? 0) : 0;
+        $trustpilotCount = in_array('trustpilot', $sources) ? ($search->trustpilot_reviews ?? 0) : 0;
+
+        return response()->json([
+            'status'           => $search->status,
+            'domain'           => $domain,
+            'message'          => $reviews->isNotEmpty() ? 'Reviews fetched successfully!' : 'No reviews found for the selected source(s).',
+            'sources'          => $sources,
+            'ratings'          => $filteredRatings,
+            'google_reviews'   => $googleCount,
+            'trustpilot_reviews' => $trustpilotCount,
+            'total_reviews'    => $googleCount + $trustpilotCount,
+            'limit'            => $limit,
+            'reviews'          => $reviews->map(fn (Review $r) => [
+                'source' => $r->source,
+                'rating' => $r->rating,
+                'text'   => $r->text,
+                'date'   => optional($r->date)->format('d-m-Y'),
+                'author' => $r->author,
+            ])->values(),
+        ]);
+
     }
 }
 

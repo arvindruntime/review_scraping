@@ -79,10 +79,20 @@ class CheckTrustpilotRunJob implements ShouldQueue
             return;
         }
 
-        // fetch dataset
+        // fetch dataset metadata (may include itemCount)
+        $datasetMeta = [];
+        try {
+            $datasetMeta = Http::get("https://api.apify.com/v2/datasets/{$this->datasetId}?token={$token}")->json('data') ?? [];
+        } catch (\Throwable $e) {
+            \Log::warning('Failed to fetch dataset metadata: ' . $e->getMessage());
+        }
+
+        // prefer using a sample (up to 200) to compute average rating, but use dataset itemCount if present for totals
+        $sampleLimit = min(max(50, $this->limit), 200);
+
         $items = Http::get(
             "https://api.apify.com/v2/datasets/{$this->datasetId}/items",
-            ['token' => $token, 'limit' => $this->limit]
+            ['token' => $token, 'limit' => $sampleLimit, 'format' => 'json', 'clean' => true]
         )->json() ?? [];
 
         $reviews = collect($items)->map(fn ($r) => [
@@ -126,38 +136,44 @@ class CheckTrustpilotRunJob implements ShouldQueue
             // ? 'completed'
             // : 'partial';
             $search->refresh();
-            $googleCount      = $search->google_reviews ?? 0;
-            $trustpilotCount  = count($reviews);
-            
-            $avgRating = collect($items)->avg('ratingValue');
-            $avgRating = $avgRating ? round($avgRating, 1) : 0;
-            
-            $finalRatings = array_filter([
-            'google' => $search->ratings['google'] ?? null,
-            'trustpilot' => [
-                'rating' => $avgRating,
+            $googleCount = $search->google_reviews ?? 0;
+
+            // Prefer dataset itemCount if available, otherwise fallback to number of sampled reviews
+            $datasetItemCount = $datasetMeta['itemCount'] ?? null;
+            $trustpilotCount = is_null($datasetItemCount) ? count($items) : (int) $datasetItemCount;
+
+            // Average rating computed from sampled items; if the dataset metadata includes an average use it
+            $avgRating = null;
+            if (!empty($items)) {
+                $avgRating = collect($items)->avg('ratingValue');
+                $avgRating = is_null($avgRating) ? null : round($avgRating, 1);
+            } elseif (isset($datasetMeta['avgRating'])) {
+                $avgRating = round((float) $datasetMeta['avgRating'], 1);
+            }
+
+            // Build final ratings while preserving any existing google rating
+            $existingRatings = $search->ratings ?? [];
+            $existingRatings['trustpilot'] = [
+                'rating' => $avgRating ?? 0,
                 'total'  => $trustpilotCount,
-            ],
-            ]);
-            
-            $status = ($googleCount > 0 || $trustpilotCount > 0)
-            ? 'completed'
-            : 'partial';
-            
-            
+            ];
+
+            $status = ($googleCount > 0 || $trustpilotCount > 0) ? 'completed' : 'partial';
+
             $search->update([
-            'ratings'             => $finalRatings,
-            'trustpilot_reviews'  => $trustpilotCount,
-            'total_reviews'       => $googleCount + $trustpilotCount,
-            'status'              => $status,
+                'ratings'             => $existingRatings,
+                'trustpilot_reviews'  => $trustpilotCount,
+                'total_reviews'       => $googleCount + $trustpilotCount,
+                'status'              => $status,
             ]);
 
             \Log::info('Trustpilot reviews saved & search finalized', [
-            'domain' => $this->domain,
-            'google_reviews' => $googleCount,
-            'trustpilot_reviews' => $trustpilotCount,
-            'total_reviews' => $googleCount + $trustpilotCount,
-        ]);
+                'domain' => $this->domain,
+                'google_reviews' => $googleCount,
+                'trustpilot_reviews' => $trustpilotCount,
+                'dataset_item_count' => $datasetItemCount,
+                'total_reviews' => $googleCount + $trustpilotCount,
+            ]);
         
             // $search->update([
             //     'ratings->trustpilot' => [

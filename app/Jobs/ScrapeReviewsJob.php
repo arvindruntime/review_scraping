@@ -54,52 +54,61 @@ class ScrapeReviewsJob implements ShouldQueue
                     $google = app(\App\Http\Controllers\Api\ReviewController::class)
                         ->fetchFromGoogle($this->domain, $this->limit);
 
+                    $googleReviews = $google['reviews'] ?? [];
+
                     if (!empty($google['summary'])) {
                         $ratings['google'] = $google['summary'];
                     }
 
-                    $allReviews = $google['reviews'] ?? [];
-                    
-                    // $totalReviews += count($google['reviews'] ?? []);
-                    
-                    if (!empty($allReviews)) {
+                    $googleCount = count($googleReviews);
 
-                        DB::transaction(function () use ($search, $allReviews, $ratings) {
-                            
-                            // Delete old Google reviews only
-                            Review::where('search_id', $search->id)
-                                ->where('source', 'google')
-                                ->delete();
+                    // Save Google results even if zero were found (delete old ones, update counts)
+                    DB::transaction(function () use ($search, $googleReviews, $ratings, $googleCount) {
 
-                            foreach ($allReviews as $r) {
-                                Review::create([
-                                    'search_id' => $search->id,
-                                    'source'    => $r['source'],
-                                    'rating'    => $r['rating'],
-                                    'text'      => $r['text'],
-                                    'date'      => $r['date'] ?? null,
-                                    'author'    => $r['author'] ?? null,
-                                ]);
-                            }
-                            
-                            $googleCount = count($allReviews);
+                        // Delete old Google reviews (safe even if none exist)
+                        Review::where('search_id', $search->id)
+                            ->where('source', 'google')
+                            ->delete();
 
-                            $search->update([
-                                'sources' => $this->sources,
-                                'ratings->google' => $ratings['google'] ?? null,
-                                'google_reviews' => $googleCount,
-                                'status' => in_array('trustpilot', $this->sources) ? 'partial' : 'completed',
+                        foreach ($googleReviews as $r) {
+                            Review::create([
+                                'search_id' => $search->id,
+                                'source'    => $r['source'],
+                                'rating'    => $r['rating'],
+                                'text'      => $r['text'],
+                                'date'      => $r['date'] ?? null,
+                                'author'    => $r['author'] ?? null,
                             ]);
+                        }
 
-                            // $search->update([
-                            //     'sources' => $this->sources,
-                            //     'ratings->google' => $ratings['google'] ?? null,
-                            //     'total_reviews' => Review::where('search_id', $search->id)->count(),
-                            //     'status' => in_array('trustpilot', $this->sources) ? 'partial' : 'completed',
-                            // ]);
+                        // Merge ratings into the existing JSON (preserve trustpilot rating if present)
+                        $existingRatings = $search->ratings ?? [];
+                        if (!empty($ratings['google'])) {
+                            $existingRatings['google'] = $ratings['google'];
+                        } else {
+                            // explicit null to indicate no google summary
+                            $existingRatings['google'] = $existingRatings['google'] ?? null;
+                        }
 
-                        });
-                    }    
+                        $trustpilotCount = $search->trustpilot_reviews ?? 0;
+                        $totalReviews = $trustpilotCount + $googleCount;
+
+                        $search->update([
+                            'sources' => $this->sources,
+                            'ratings' => $existingRatings,
+                            'google_reviews' => $googleCount,
+                            'total_reviews' => $totalReviews,
+                            // when trustpilot is selected and not finished, mark partial, otherwise completed
+                            'status' => in_array('trustpilot', $this->sources) && $trustpilotCount === 0 ? 'partial' : 'completed',
+                        ]);
+
+                        \Log::info('Google results saved to search', [
+                            'domain' => $this->domain,
+                            'google_reviews' => $googleCount,
+                            'total_reviews' => $totalReviews,
+                        ]);
+
+                    });
                 }
                 
                 // * ---------------- TRUSTPILOT ---------------- */

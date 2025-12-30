@@ -555,9 +555,9 @@
             </div>
 
             <div class="source-filters">
-                <button class="source-filter-btn active" onclick="filterReviews('all')">All Reviews</button>
-                <button class="source-filter-btn" onclick="filterReviews('google')">Google</button>
-                <button class="source-filter-btn" onclick="filterReviews('trustpilot')">Trustpilot</button>
+                <button class="source-filter-btn active" onclick="filterAndFetch('all')">All Reviews</button>
+                <button class="source-filter-btn" onclick="filterAndFetch('google')">Google</button>
+                <button class="source-filter-btn" onclick="filterAndFetch('trustpilot')">Trustpilot</button>
             </div>
 
             <div id="reviews-container">
@@ -669,9 +669,13 @@
                 document.getElementById('loading').innerText =
                     'Scraping reviews in background… Please wait.';
 
-                setTimeout(() => {
-                    getReviews();
-                }, 15000);
+                // if the server returned partial results/counts include them immediately
+                if (data.reviews?.length > 0 || (data.google_reviews || 0) > 0 || (data.trustpilot_reviews || 0) > 0) {
+                    allReviews = data.reviews || [];
+                    displayResults(data);
+                }
+
+                schedulePoll(15000);
 
                 return;
             }
@@ -767,12 +771,33 @@
                 document.getElementById('loading').innerText =
                     'Scraping reviews in background… this may take up to 1–2 minutes.';
 
-                // Auto retry after 15 seconds
-                setTimeout(() => {
-                    getReviews();
-                }, 15000);
+                // if server returned partial results/counts include them immediately
+                if (get_data.reviews?.length > 0 || (get_data.google_reviews || 0) > 0 || (get_data.trustpilot_reviews || 0) > 0) {
+                    allReviews = get_data.reviews || [];
+                    displayResults(get_data);
+                }
+
+                // schedule next poll
+                schedulePoll(15000);
 
                 return;
+            }
+
+            // PARTIAL: some sources complete, others still processing (show current data and keep polling)
+            if (get_data.status === 'partial') {
+                document.getElementById('loading').innerText =
+                    'Partial results available — other sources still scraping...';
+                // show current results immediately
+                allReviews = get_data.reviews || [];
+                displayResults(get_data);
+                // continue polling for final results
+                schedulePoll(15000);
+                return;
+            }
+
+            if (get_data.status === 'completed') {
+                document.getElementById('loading').style.display = 'none';
+                clearPoll();
             }
 
             if (!get_response.ok) {
@@ -796,9 +821,44 @@
         }
     }
 
+        let _pollTimeoutId = null;
+        function schedulePoll(ms = 15000) {
+            console.debug('schedulePoll:', ms);
+            clearPoll();
+            _pollTimeoutId = setTimeout(() => {
+                console.debug('polling getReviews');
+                getReviews();
+            }, ms);
+        }
+        function clearPoll() {
+            if (_pollTimeoutId) {
+                clearTimeout(_pollTimeoutId);
+                _pollTimeoutId = null;
+            }
+        }
+
+        // On page load, if domain is present, try to fetch results (useful after reload)
+        document.addEventListener('DOMContentLoaded', () => {
+            const d = document.getElementById('domain').value.trim();
+            if (d) {
+                // don't auto-show errors; simply try to fetch existing completed/processing search
+                getReviews();
+            }
+        });
+
         function displayResults(data) {
             
             console.log('Displaying results with data:', data);
+
+            // keep a local copy of fetched reviews so filter works immediately
+            allReviews = data.reviews || allReviews;
+            
+            if (data.status === 'completed') {
+                document.getElementById('loading').style.display = 'none';
+                clearPoll();
+            }
+            
+            
             const limit = data.limit || 20;
             // Display stats
             const statsGrid = document.getElementById('stats-grid');
@@ -810,41 +870,40 @@
                 </div>
             `;
 
-            if (data.ratings) {
-                if (data.ratings.google) {
-                    const g = data.ratings.google;
-                    statsGrid.innerHTML += `
-                        <div class="stat-card">
-                            <div class="stat-label">Google Reviews</div>
-                            <div class="stat-value">
-                                ${g.rating}
-                                <span style="color:#FFB800; font-size:18px;">
-                                    ${renderStars(g.rating)}
-                                </span>
-                                (${g.total})
-                            </div>
-                            <div class="stat-note">Google Reviews</div>
+            // Google card: show if we have rating info or a count > 0
+            if ((data.ratings && data.ratings.google) || (data.google_reviews > 0)) {
+                const g = (data.ratings && data.ratings.google) ? data.ratings.google : { rating: 0, total: data.google_reviews };
+                statsGrid.innerHTML += `
+                    <div class="stat-card">
+                        <div class="stat-label">Google Reviews</div>
+                        <div class="stat-value">
+                            ${g.rating ?? '-'}
+                            <span style="color:#FFB800; font-size:18px;">
+                                ${renderStars(g.rating || 0)}
+                            </span>
+                            (${g.total ?? data.google_reviews})
                         </div>
-                    `;
-                }               
-                
-                if (data.ratings.trustpilot) {
-                    const t = data.ratings.trustpilot;
-                    statsGrid.innerHTML += `
-                        <div class="stat-card">
-                            <div class="stat-label">Trustpilot Reviews</div>
-                            <div class="stat-value">
-                                ${t.rating}
-                                <span style="color:#FFB800; font-size:18px;">
-                                    ${renderStars(t.rating)}
-                                </span>
-                                (${t.total})
-                            </div>
-                            <div class="stat-note">Trustpilot Reviews</div>
-                        </div>
-                    `;
-                }
+                        <div class="stat-note">Google Reviews</div>
+                    </div>
+                `;
+            }
 
+            // Trustpilot card: show if we have rating info or a count > 0
+            if ((data.ratings && data.ratings.trustpilot) || (data.trustpilot_reviews > 0)) {
+                const t = (data.ratings && data.ratings.trustpilot) ? data.ratings.trustpilot : { rating: 0, total: data.trustpilot_reviews };
+                statsGrid.innerHTML += `
+                    <div class="stat-card">
+                        <div class="stat-label">Trustpilot Reviews</div>
+                        <div class="stat-value">
+                            ${t.rating ?? '-'}
+                            <span style="color:#FFB800; font-size:18px;">
+                                ${renderStars(t.rating || 0)}
+                            </span>
+                            (${t.total ?? data.trustpilot_reviews})
+                        </div>
+                        <div class="stat-note">Trustpilot Reviews</div>
+                    </div>
+                `;
             }
 
             statsGrid.innerHTML += `
@@ -913,6 +972,26 @@
         });
     }
 
+        // When user clicks a source filter button, update the checkbox state and re-fetch latest data for that source(s)
+        function filterAndFetch(source) {
+            // set appropriate checkboxes so getReviews sends correct sources
+            if (source === 'all') {
+                document.getElementById('filter-google').checked = true;
+                document.getElementById('filter-trustpilot').checked = true;
+            } else if (source === 'google') {
+                document.getElementById('filter-google').checked = true;
+                document.getElementById('filter-trustpilot').checked = false;
+            } else if (source === 'trustpilot') {
+                document.getElementById('filter-google').checked = false;
+                document.getElementById('filter-trustpilot').checked = true;
+            }
+
+            // visually apply filter immediately (so UI is responsive)
+            filterReviews(source);
+
+            // fetch latest reviews for the selected source(s) and update stats
+            getReviews();
+        }
 
         function escapeHtml(text) {
             const div = document.createElement('div');
