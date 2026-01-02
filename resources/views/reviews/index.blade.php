@@ -754,9 +754,10 @@
         let currentFilter = 'all';
 
     async function scarpeReviews() {
-        const domain = document.getElementById('domain').value.trim();
+        const userInput = document.getElementById('domain').value.trim();
+        const domain = sanitizeDomain(userInput);
         if (!domain) {
-            showError('Please enter a domain');
+            showError('Please enter a valid domain (example: doman.com)');
             return;
         }
 
@@ -1160,6 +1161,38 @@
                 scarpeReviews();
             }
         });
+
+
+    function sanitizeDomain(input) {
+        if (!input) return '';
+
+        let value = input
+            .trim()
+            .toLowerCase();
+
+        // Remove protocol
+        value = value.replace(/^https?:\/\//, '');
+
+        // Remove everything after /
+        value = value.split('/')[0];
+
+        // Remove www.
+        value = value.replace(/^www\./, '');
+
+        // If user entered only "www" or invalid
+        if (!value || value === 'www') {
+            return '';
+        }
+
+        // Reduce subdomains → root domain
+        const parts = value.split('.');
+        if (parts.length > 2) {
+            value = parts.slice(-2).join('.');
+        }
+
+       return value;
+    }
+
     </script>
 </body>
 </html>
