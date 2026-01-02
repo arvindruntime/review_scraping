@@ -111,25 +111,25 @@ class ReviewController extends Controller
     }
 
     function fetchFromGoogle(string $domain, int $limit): array
-    {
+    { 
         // Prefer Google Places API (more authoritative for rating/total) when API key is configured
-        try {
-            $apiKey = env('GOOGLE_PLACES_API_KEY');
-            if (!empty($apiKey)) {
-                $service = app(\App\Services\GooglePlacesService::class);
-                $res = $service->getReviewsForDomain($domain, $limit);
+        // try {
+        //     $apiKey = env('GOOGLE_PLACES_API_KEY');
+        //     if (!empty($apiKey)) {
+        //         $service = app(\App\Services\GooglePlacesService::class);
+        //         $res = $service->getReviewsForDomain($domain, $limit);
 
-                return [
-                    'reviews' => $res['reviews'] ?? [],
-                    'summary' => [
-                        'rating' => isset($res['rating']) ? (float) $res['rating'] : null,
-                        'total'  => isset($res['total_reviews']) ? (int) $res['total_reviews'] : null,
-                    ],
-                ];
-            }
-        } catch (\Throwable $e) {
-            \Log::warning('GooglePlacesService failed, falling back to Apify actor: ' . $e->getMessage());
-        }
+        //         return [
+        //             'reviews' => $res['reviews'] ?? [],
+        //             'summary' => [
+        //                 'rating' => isset($res['rating']) ? (float) $res['rating'] : null,
+        //                 'total'  => isset($res['total_reviews']) ? (int) $res['total_reviews'] : null,
+        //             ],
+        //         ];
+        //     }
+        // } catch (\Throwable $e) {
+        //     \Log::warning('GooglePlacesService failed, falling back to Apify actor: ' . $e->getMessage());
+        // }
 
         // Fallback: use configured Apify Google actor
         $token   = config('apify.token');
@@ -156,6 +156,11 @@ class ReviewController extends Controller
             return ['reviews' => [], 'summary' => null];
         }
 
+         \Log::info('Google Reviews Scraped', [
+                'run' => $run,
+                'data' => $run->json('data'),
+            ]);
+
         $datasetId = null;
         for ($i = 0; $i < 60; $i++) {
             sleep(2);
@@ -167,6 +172,10 @@ class ReviewController extends Controller
             if ($status->json('data.status') === 'SUCCEEDED') {
                 break;
             }
+
+            \Log::info('Loo runing ', [
+                'status' => $status->json('data.status')
+            ]);
         }
 
         if (!$datasetId) {
@@ -177,6 +186,10 @@ class ReviewController extends Controller
             "https://api.apify.com/v2/datasets/{$datasetId}/items",
             ['token' => $token, 'format' => 'json', 'clean' => true]
         )->json();
+
+        \Log::info('Items ', [
+                'items data' => $items
+            ]);
 
         if (empty($items[0])) {
             return ['reviews' => [], 'summary' => null];
@@ -191,6 +204,10 @@ class ReviewController extends Controller
                 'total'  => (int) $place['reviewsCount'],
             ];
         }
+
+        \Log::info('Items ', [
+                'place data' => $place
+            ]);
 
         $reviews = [];
         foreach ($place['reviews'] ?? [] as $r) {
@@ -217,7 +234,8 @@ class ReviewController extends Controller
     public function startTrustpilotRun(string $domain): array
     {
         $token   = config('apify.token');
-        $actorId = 'nikita-sviridenko~trustpilot-reviews-scraper';
+        // $actorId = 'nikita-sviridenko~trustpilot-reviews-scraper';
+        $actorId = config('apify.trustpilot_actor');
 
         $companyDomain = str_replace(['https://', 'http://', 'www.'], '', $domain);
 
@@ -227,7 +245,7 @@ class ReviewController extends Controller
                 "companyDomain" => $companyDomain,
                 "contentToExtract" => "reviews",
                 "sortBy" => "recency",
-                "filterByVerified" => true,
+                "filterByVerified" => false,
                 "startFromPageNumber" => 1,
                 "endAtPageNumber" => 1,
                 "proxyConfiguration" => ["useApifyProxy" => true]

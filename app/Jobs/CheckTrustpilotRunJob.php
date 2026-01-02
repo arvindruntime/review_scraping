@@ -88,11 +88,11 @@ class CheckTrustpilotRunJob implements ShouldQueue
         }
 
         // prefer using a sample (up to 200) to compute average rating, but use dataset itemCount if present for totals
-        $sampleLimit = min(max(50, $this->limit), 200);
+        //$sampleLimit = min(max(50, $this->limit), 200);
 
         $items = Http::get(
             "https://api.apify.com/v2/datasets/{$this->datasetId}/items",
-            ['token' => $token, 'limit' => $sampleLimit, 'format' => 'json', 'clean' => true]
+            ['token' => $token, 'limit' => $this->limit, 'desc'=> true, 'format' => 'json', 'clean' => true]
         )->json() ?? [];
 
         $reviews = collect($items)->map(fn ($r) => [

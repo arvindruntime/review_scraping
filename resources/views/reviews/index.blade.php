@@ -506,6 +506,141 @@
             background: #00B67A;
             color: #fff;
         }
+
+
+        /* /////////////// 02-01-2026// */
+
+        /* ===== Dark Hero Section (Screenshot Style) ===== */
+.hero-dark {
+    min-height: 85vh;
+    background: radial-gradient(circle at top left, #3b1d5a, #0b0c10 60%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 60px 20px;
+    color: #fff;
+}
+
+.pill {
+    background: rgba(255,255,255,0.1);
+    padding: 8px 16px;
+    border-radius: 30px;
+    font-size: 13px;
+    margin-bottom: 20px;
+    color: #c7c7ff;
+}
+
+.hero-title-dark {
+    font-size: 56px;
+    font-weight: 800;
+    margin-bottom: 20px;
+}
+
+.hero-title-dark span {
+    background: linear-gradient(90deg, #6a5cff, #ff4d8d);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.hero-subtitle-dark {
+    max-width: 750px;
+    font-size: 18px;
+    line-height: 1.6;
+    color: #b5b5c3;
+    margin-bottom: 40px;
+}
+
+.search-dark {
+    display: flex;
+    gap: 14px;
+    background: #15161a;
+    padding: 12px;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 720px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+.search-input-dark {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #0f1014;
+    border-radius: 12px;
+    padding: 0 14px;
+}
+
+.search-input-dark input {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 16px;
+    width: 100%;
+    padding: 14px 0;
+}
+
+.search-input-dark input:focus {
+    outline: none;
+}
+
+.link-icon {
+    opacity: 0.6;
+}
+
+.search-dark button {
+    background: linear-gradient(90deg, #6a5cff, #ff4d8d);
+    border: none;
+    border-radius: 12px;
+    padding: 0 28px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.search-dark button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(106,92,255,0.4);
+}
+
+.source-dark {
+    margin-top: 26px;
+    display: flex;
+    gap: 20px;
+}
+
+.source-dark label {
+    background: rgba(255,255,255,0.08);
+    padding: 10px 18px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.source-dark input {
+    margin-right: 6px;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+    .hero-title-dark {
+        font-size: 36px;
+    }
+
+    .search-dark {
+        flex-direction: column;
+    }
+
+    .search-dark button {
+        width: 100%;
+        padding: 14px;
+    }
+}
+
     </style>
 </head>
 <body>
@@ -516,34 +651,48 @@
     </div>
 
     <div class="main-container">
-        <div class="hero-section">
-            <h1 class="hero-title">Find reviews you can trust</h1>
-            <p class="hero-subtitle">Discover, read, and analyze reviews from multiple sources</p>
+        
+    <!-- replaced hero section -->
+     <div class="hero-dark">
+    <span class="pill">● New : AI COMPETITOR ANALYSIS</span>
 
-            <div class="search-box">
-                <div class="search-input-wrapper">
-                    <input 
-                        type="text" 
-                        id="domain" 
-                        class="search-input" 
-                        placeholder="Search company or domain (e.g., ubereats.com)" 
-                        value=""
-                    >
-                    <button id="search-btn" class="search-btn" onclick="scarpeReviews()">Search</button>
-                </div>
+    <h1 class="hero-title-dark">
+        Find reviews you can <span>trust.</span>
+    </h1>
 
-                <div class="source-filters-inline">
-                    <div class="filter-checkbox">
-                        <input type="checkbox" id="filter-google" checked>
-                        <label for="filter-google">Google Reviews</label>
-                    </div>
-                    <div class="filter-checkbox">
-                        <input type="checkbox" id="filter-trustpilot">
-                        <label for="filter-trustpilot">Trustpilot</label>
-                    </div>
-                </div>
-            </div>
+    <p class="hero-subtitle-dark">
+        AI-powered analysis aggregating thousands of reviews into actionable intelligence.
+        Understand sentiment, reliability and trust in seconds.
+    </p>
+
+    <div class="search-dark">
+        <div class="search-input-dark">
+            <span class="link-icon">🔗</span>
+            <input
+                type="text"
+                id="domain"
+                placeholder="avis.com.au"
+            >
         </div>
+
+        <button id="search-btn" onclick="scarpeReviews()">
+            ⚡ Generate Report
+        </button>
+    </div>
+
+    <div class="source-dark">
+        <label>
+            <input type="checkbox" id="filter-trustpilot" checked>
+            ⭐ Trustpilot
+        </label>
+
+        <label>
+            <input type="checkbox" id="filter-google" checked>
+            🌐 Google Reviews
+        </label>
+    </div>
+</div>
+
 
         <div id="error-message" class="error" style="display: none;"></div>
         <div id="loading" class="loading" style="display: none;">Loading reviews</div>
