@@ -22,12 +22,14 @@ class ScrapeReviewsJob implements ShouldQueue
     protected string $domain;
     protected array $sources;
     protected int $limit;
+    protected ?string $google_place_id = null;
 
-    public function __construct(string $domain, array $sources, int $limit)
+    public function __construct(string $domain, array $sources, int $limit, ?string $google_place_id = null)
     {
         $this->domain  = $domain;
         $this->sources = $sources;
         $this->limit   = $limit;
+        $this->google_place_id = $google_place_id;
     }
 
     public function handle(): void
@@ -52,7 +54,7 @@ class ScrapeReviewsJob implements ShouldQueue
 
                 if (in_array('google', $this->sources)) {
                     $google = app(\App\Http\Controllers\Api\ReviewController::class)
-                        ->fetchFromGoogle($this->domain, $this->limit);
+                        ->fetchFromGoogle($this->domain, $this->limit, $this->google_place_id);
 
                     $googleReviews = $google['reviews'] ?? [];
 

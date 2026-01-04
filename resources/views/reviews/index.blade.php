@@ -641,6 +641,78 @@
     }
 }
 
+/* //////////////// Auto suggest dropdown like google */
+.gmaps-search-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+}
+
+/* Input */
+#domain {
+    width: 100%;
+    padding: 14px 44px 14px 16px;
+    border-radius: 24px;
+    border: 1px solid #dadce0;
+    font-size: 16px;
+    outline: none;
+}
+
+/* Dropdown card */
+#domain-suggestions {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border-radius: 12px;
+    list-style: none;
+    padding: 8px 0;
+    margin: 0;
+    display: none;
+    max-height: 320px;
+    overflow-y: auto;
+    z-index: 9999;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+
+/* Item */
+#domain-suggestions li {
+    display: flex;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+}
+
+/* Hover */
+#domain-suggestions li:hover {
+    background: #f1f3f4;
+}
+
+/* Icon */
+.suggestion-icon {
+    font-size: 18px;
+    color: #5f6368;
+    margin-top: 2px;
+}
+
+/* Text */
+.suggestion-text {
+    line-height: 1.2;
+}
+
+.suggestion-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #202124;
+}
+
+.suggestion-subtitle {
+    font-size: 13px;
+    color: #5f6368;
+}
+
+
     </style>
 </head>
 <body>
@@ -668,13 +740,23 @@
     <div class="search-dark">
         <div class="search-input-dark">
             <span class="link-icon">🔗</span>
+
+        <div class="gmaps-search-wrapper">
             <input
                 type="text"
                 id="domain"
-                placeholder="avis.com.au"
+                placeholder="Search here"
+                autocomplete="off"
             >
+            <ul id="domain-suggestions"></ul>
+            <br>
+            
+            <span id="main_text" style="color:#555; font-size:14px;">
+                
+            </span>
         </div>
 
+        </div>
         <button id="search-btn" onclick="scarpeReviews()">
             ⚡ Generate Report
         </button>
@@ -754,8 +836,13 @@
         let currentFilter = 'all';
 
     async function scarpeReviews() {
-        const userInput = document.getElementById('domain').value.trim();
+        const domainInput = document.getElementById('domain');
+        const userInput = domainInput.value.trim();
         const domain = sanitizeDomain(userInput);
+
+        const google_place_id = domainInput.dataset.placeId || null;
+        
+        console.log('google_place_id:', google_place_id);
         if (!domain) {
             showError('Please enter a valid domain (example: doman.com)');
             return;
@@ -764,6 +851,11 @@
         const sources = [];
         if (document.getElementById('filter-google').checked) {
             sources.push('google');
+
+            if (!google_place_id) {
+            showError('Please select a business from Google suggestions');
+            return;
+            }
         }
         if (document.getElementById('filter-trustpilot').checked) {
             sources.push('trustpilot');
@@ -773,7 +865,6 @@
             showError('Please select at least one source');
             return;
         }
-
         // UI start
         document.getElementById('error-message').style.display = 'none';
         document.getElementById('loading').style.display = 'block';
@@ -794,6 +885,7 @@
                 body: JSON.stringify({
                     domain: domain,
                     sources: sources,
+                    google_place_id: google_place_id,
                     limit: 20
                 }),
                 signal: controller.signal
@@ -1193,6 +1285,76 @@
        return value;
     }
 
+    const input = document.getElementById('domain');
+    const list = document.getElementById('domain-suggestions');
+    const main_text = document.getElementById('main_text');
+
+    let debounce = null;
+
+    input.addEventListener('input', function () {
+        const value = this.value.trim();
+
+        delete input.dataset.placeId;
+        main_text.textContent = '';
+
+        if (value.length < 2) {
+            list.style.display = 'none';
+            return;
+        }
+
+        clearTimeout(debounce);
+
+        debounce = setTimeout(() => {
+            fetch(`/api/google-place-suggestions?domain=${encodeURIComponent(value)}`)
+                .then(res => res.json())
+                .then(data => {
+                    list.innerHTML = '';
+
+                    if (!data.predictions || data.predictions.length === 0) {
+                        list.style.display = 'none';
+                        return;
+                    }
+
+                    data.predictions.forEach(item => {
+                        const li = document.createElement('li');
+
+                        li.innerHTML = `
+                            <div class="suggestion-icon">📍</div>
+                            <div class="suggestion-text">
+                                <div class="suggestion-title">
+                                    ${item.structured_formatting.main_text}
+                                </div>
+                                <div class="suggestion-subtitle">
+                                    ${item.structured_formatting.secondary_text ?? ''}
+                                </div>
+                            </div>
+                        `;
+
+                        li.addEventListener('mousedown', () => {
+                            
+                            // input.value = item.structured_formatting.main_text;
+                            input.dataset.placeId = item.place_id;
+                             
+                            main_text.innerHTML = `📍 Selected business: <strong>${item.structured_formatting.main_text}</strong>`;
+                            list.style.display = 'none';
+                        });
+
+                        
+                        
+
+                        list.appendChild(li);
+                    });
+
+                    list.style.display = 'block';
+                });
+        }, 300);
+    });
+
+    document.addEventListener('click', e => {
+        if (!e.target.closest('.gmaps-search-wrapper')) {
+            list.style.display = 'none';
+        }
+    });
     </script>
 </body>
 </html>

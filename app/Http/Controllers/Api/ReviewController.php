@@ -22,10 +22,12 @@ class ReviewController extends Controller
             'domain'  => 'required|string',
             'sources' => 'required|array|min:1',
             'limit'   => 'nullable|integer|min:1|max:20',
+
         ]);
 
         $domain  = strtolower(trim($request->input('domain')));
         $sources = $request->input('sources');
+        $google_place_id = $request->input('google_place_id');
         $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));
         
         
@@ -83,7 +85,7 @@ class ReviewController extends Controller
             'limit'   => $limit,
         ]);
         
-        ScrapeReviewsJob::dispatch($domain, $sources, $limit);   
+        ScrapeReviewsJob::dispatch($domain, $sources, $limit, $google_place_id);   
         
         \Log::info('End Dispatched ScrapeReviewsJob');
             
@@ -99,7 +101,7 @@ class ReviewController extends Controller
         return response()->json([
             'status'  => 'processing',
             'domain'  => $domain,
-            'message' => 'Reviews are being fetched. Please try again in 1–2 minutes.',
+            'message' => 'Reviews are being fetched.',
             'sources' => $sources,
             'ratings' => $filteredRatings,
             'google_reviews' => $googleCount,
@@ -110,7 +112,7 @@ class ReviewController extends Controller
         ], 202);
     }
 
-    function fetchFromGoogle(string $domain, int $limit): array
+    function fetchFromGoogle(string $domain, int $limit, string $google_place_id = null): array
     { 
         // Prefer Google Places API (more authoritative for rating/total) when API key is configured
         // try {
@@ -135,12 +137,17 @@ class ReviewController extends Controller
         $token   = config('apify.token');
         $actorId = config('apify.google_actor');
 
+        if (empty($google_place_id)) {
+            return ['reviews' => [], 'summary' => null];
+        }
+
         $run = Http::post(
-            "https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}",
+            "https://api.apify.com/v2/acts/{$actorId}/run-sync-get-dataset-items?token={$token}",
             [
                 // Try company name (strip tld) and domain as fallbacks for better matching
-                'searchStringsArray' => [preg_replace('/^www\./', '', $domain), preg_replace('/\..*$/', '', $domain)],
-                'language'           => 'en',
+                // 'searchStringsArray' => [preg_replace('/^www\./', '', $domain), preg_replace('/\..*$/', '', $domain)],
+                // 'language'           => 'en',
+                'placeIds'        => [$google_place_id],
                 'maxReviews'         => $limit,
                 'reviewsSort'        => 'newest',
                 'includeReviews'     => true,
@@ -148,66 +155,20 @@ class ReviewController extends Controller
         );
 
         if (!$run->successful()) {
+            \Log::error('Apify Google actor failed', [
+                'status' => $run->status(),
+                'body'   => $run->body(),
+            ]);
             return ['reviews' => [], 'summary' => null];
         }
 
-        $runId = $run->json('data.id');
-        if (!$runId) {
-            return ['reviews' => [], 'summary' => null];
-        }
-
-         \Log::info('Google Reviews Scraped', [
-                'run' => $run,
-                'data' => $run->json('data'),
-            ]);
-
-        $datasetId = null;
-        for ($i = 0; $i < 60; $i++) {
-            sleep(2);
-            $status = Http::get(
-                "https://api.apify.com/v2/acts/{$actorId}/runs/{$runId}?token={$token}"
-            );
-
-            $datasetId = $status->json('data.defaultDatasetId');
-            if ($status->json('data.status') === 'SUCCEEDED') {
-                break;
-            }
-
-            \Log::info('Loo runing ', [
-                'status' => $status->json('data.status')
-            ]);
-        }
-
-        if (!$datasetId) {
-            return ['reviews' => [], 'summary' => null];
-        }
-
-        $items = Http::get(
-            "https://api.apify.com/v2/datasets/{$datasetId}/items",
-            ['token' => $token, 'format' => 'json', 'clean' => true]
-        )->json();
-
-        \Log::info('Items ', [
-                'items data' => $items
-            ]);
+        $items = $run->json();
 
         if (empty($items[0])) {
             return ['reviews' => [], 'summary' => null];
         }
 
         $place = $items[0];
-
-        $summary = null;
-        if (!empty($place['totalScore']) && !empty($place['reviewsCount'])) {
-            $summary = [
-                'rating' => (float) $place['totalScore'],
-                'total'  => (int) $place['reviewsCount'],
-            ];
-        }
-
-        \Log::info('Items ', [
-                'place data' => $place
-            ]);
 
         $reviews = [];
         foreach ($place['reviews'] ?? [] as $r) {
@@ -220,14 +181,22 @@ class ReviewController extends Controller
             ];
         }
 
-        usort($reviews, fn ($a, $b) =>
-            strcmp((string) $b['date'], (string) $a['date'])
-        );
+         \Log::info('Google Reviews Scraped', [
+                'run' => $run,
+                'data' => $run->json('data'),
+            ]);
 
-        return [
-            'reviews' => array_slice($reviews, 0, $limit),
-            'summary' => $summary,
-        ];
+            usort($reviews, fn ($a, $b) =>
+                strcmp((string) $b['date'], (string) $a['date'])
+            );
+
+            return [
+        'reviews' => array_slice($reviews, 0, $limit),
+        'summary' => [
+            'rating' => isset($place['totalScore']) ? (float) $place['totalScore'] : null,
+            'total'  => isset($place['reviewsCount']) ? (int) $place['reviewsCount'] : null,
+            ],
+        ];       
     }
     
     
@@ -240,7 +209,7 @@ class ReviewController extends Controller
         $companyDomain = str_replace(['https://', 'http://', 'www.'], '', $domain);
 
         $response = Http::post(
-            "https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}",
+            "https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}}&memory=4096",
             [
                 "companyDomain" => $companyDomain,
                 "contentToExtract" => "reviews",
@@ -330,5 +299,33 @@ class ReviewController extends Controller
         ]);
 
     }
+
+    public function googlePlaceSuggestions(Request $request)
+    {
+        $input = trim($request->get('domain'));
+
+        if (!$input) {
+            return response()->json(['predictions' => []]);
+        }
+
+        // Normalize domain → keyword
+        $keyword = preg_replace('#^https?://#', '', $input);
+        $keyword = preg_replace('#^www\.#', '', $keyword);
+        $keyword = preg_replace('#\.(com|in|au|co|net|org|io|ai|uk)(/.*)?$#i', '', $keyword);
+
+        $response = Http::get(
+            'https://maps.googleapis.com/maps/api/place/autocomplete/json',
+            [
+                'input'      => $keyword,
+                'types'      => 'establishment',
+                'language'   => 'en',
+                // 'components' => 'country:IN', // change if needed
+                'key'        => config('services.google.places_key'),
+            ]
+        );
+
+        return response()->json($response->json());
+    }
+
 }
 

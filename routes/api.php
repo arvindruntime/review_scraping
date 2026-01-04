@@ -9,6 +9,8 @@ Route::post('/reviews/scrape', [ReviewController::class, 'scrapeReviews']);
 // Route::get('/reviews', [ReviewController::class, 'getReviews']);
 Route::post('/get-reviews', [ReviewController::class, 'getReviews']);
 
+Route::get('/google-place-suggestions', [ReviewController::class, 'googlePlaceSuggestions']);
+
 // Admin routes
 Route::prefix('admin')->group(function () {
     Route::get('/searches', [AdminController::class, 'index']);
