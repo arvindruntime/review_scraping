@@ -764,7 +764,7 @@
 
     <div class="source-dark">
         <label>
-            <input type="checkbox" id="filter-trustpilot" checked>
+            <input type="checkbox" id="filter-trustpilot">
             ⭐ Trustpilot
         </label>
 
