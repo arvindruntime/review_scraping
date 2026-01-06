@@ -852,10 +852,10 @@
         if (document.getElementById('filter-google').checked) {
             sources.push('google');
 
-            if (!google_place_id) {
-            showError('Please select a business from Google suggestions');
-            return;
-            }
+            // if (!google_place_id) {
+            // showError('Please select a business from Google suggestions');
+            // return;
+            // }
         }
         if (document.getElementById('filter-trustpilot').checked) {
             sources.push('trustpilot');
