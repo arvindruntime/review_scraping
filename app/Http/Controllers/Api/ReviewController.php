@@ -141,18 +141,45 @@ class ReviewController extends Controller
             return ['reviews' => [], 'summary' => null];
         }
 
-        $run = Http::post(
-            "https://api.apify.com/v2/acts/{$actorId}/run-sync-get-dataset-items?token={$token}",
-            [
-                // Try company name (strip tld) and domain as fallbacks for better matching
-                // 'searchStringsArray' => [preg_replace('/^www\./', '', $domain), preg_replace('/\..*$/', '', $domain)],
-                // 'language'           => 'en',
-                'placeIds'        => [$google_place_id],
-                'maxReviews'         => $limit,
-                'reviewsSort'        => 'newest',
-                'includeReviews'     => true,
-            ]
-        );
+        if($google_place_id)
+        {
+            $run = Http::post(
+                "https://api.apify.com/v2/acts/{$actorId}/run-sync-get-dataset-items?token={$token}",
+                [
+                    // Try company name (strip tld) and domain as fallbacks for better matching
+                    // 'searchStringsArray' => $searchStrings,
+                    // 'language'           => 'en',
+                    'placeIds'        => [$google_place_id],
+                    'maxReviews'         => $limit,
+                    'reviewsSort'        => 'newest',
+                    'includeReviews'     => true,
+                ]
+            );
+        }
+        else
+        {
+            $cleanName = preg_replace('#^https?://#', '', $domain);
+            $cleanName = preg_replace('#^www\.#', '', $cleanName);
+            $cleanName = preg_replace('#\..*$#', '', $cleanName);
+
+            $searchStrings = [
+                "{$cleanName} Australia",
+                "{$cleanName} Sydney"
+            ];
+
+            $run = Http::post(
+                "https://api.apify.com/v2/acts/{$actorId}/run-sync-get-dataset-items?token={$token}",
+                [
+                    // Try company name (strip tld) and domain as fallbacks for better matching
+                    'searchStringsArray' => $searchStrings,
+                    // 'language'           => 'en',
+                    // 'placeIds'        => [$google_place_id],
+                    'maxReviews'         => $limit,
+                    'reviewsSort'        => 'newest',
+                    'includeReviews'     => true,
+                ]
+            );
+        }
 
         if (!$run->successful()) {
             \Log::error('Apify Google actor failed', [
@@ -301,31 +328,76 @@ class ReviewController extends Controller
     }
 
     public function googlePlaceSuggestions(Request $request)
-    {
-        $input = trim($request->get('domain'));
+{
+    $input = trim($request->get('domain'));
 
-        if (!$input) {
-            return response()->json(['predictions' => []]);
-        }
-
-        // Normalize domain → keyword
-        $keyword = preg_replace('#^https?://#', '', $input);
-        $keyword = preg_replace('#^www\.#', '', $keyword);
-        $keyword = preg_replace('#\.(com|in|au|co|net|org|io|ai|uk)(/.*)?$#i', '', $keyword);
-
-        $response = Http::get(
-            'https://maps.googleapis.com/maps/api/place/autocomplete/json',
-            [
-                'input'      => $keyword,
-                'types'      => 'establishment',
-                'language'   => 'en',
-                // 'components' => 'country:IN', // change if needed
-                'key'        => config('services.google.places_key'),
-            ]
-        );
-
-        return response()->json($response->json());
+    if (!$input) {
+        return response()->json(['predictions' => []]);
     }
+
+    // Normalize domain → keyword
+    $keyword = preg_replace('#^https?://#', '', $input);
+    $keyword = preg_replace('#^www\.#', '', $keyword);
+    $keyword = preg_replace('#\.(com|in|au|co|net|org|io|ai|uk)(/.*)?$#i', '', $keyword);
+
+    // ✅ Autocomplete API
+    $autoResponse = Http::get(
+        'https://maps.googleapis.com/maps/api/place/autocomplete/json',
+        [
+            'input'    => $keyword,
+            'language' => 'en',
+            'locationbias' => 'circle:50000@20.5937,78.9629', // India bias
+            // Australia bias (soft, not restrictive)
+            // 'location' => '-25.2744,133.7751',
+            'radius'   => 2000000,
+
+            'key'      => config('services.google.places_key'),
+        ]
+    )->json();
+
+    // ✅ Proper status handling
+    if (($autoResponse['status'] ?? '') !== 'OK') {
+        return response()->json([
+            'predictions' => [],
+            'status'      => $autoResponse['status'] ?? 'UNKNOWN',
+            'error'       => $autoResponse['error_message'] ?? null,
+        ]);
+    }
+
+    if (empty($autoResponse['predictions'])) {
+        return response()->json(['predictions' => []]);
+    }
+
+    // Limit to top 5 (cost control)
+    $predictions = array_slice($autoResponse['predictions'], 0, 5);
+    $results = [];
+
+    foreach ($predictions as $item) {
+
+        // Place Details API (rating + total reviews)
+        $details = Http::get(
+            'https://maps.googleapis.com/maps/api/place/details/json',
+            [
+                'place_id' => $item['place_id'],
+                'fields'   => 'rating,user_ratings_total',
+                'key'      => config('services.google.places_key'),
+            ]
+        )->json();
+
+        $results[] = [
+            'place_id'       => $item['place_id'],
+            'main_text'      => $item['structured_formatting']['main_text'],
+            'secondary_text' => $item['structured_formatting']['secondary_text'] ?? '',
+            'rating'         => $details['result']['rating'] ?? null,
+            'total_reviews'  => $details['result']['user_ratings_total'] ?? 0,
+        ];
+    }
+
+    return response()->json([
+        'predictions' => $results
+    ]);
+}
+
 
 }
 

@@ -1318,29 +1318,43 @@
                     data.predictions.forEach(item => {
                         const li = document.createElement('li');
 
+                        const ratingHtml = item.total_reviews > 0
+                        ? `⭐ ${item.rating} (${item.total_reviews} reviews)`
+                        : `<span style="color:#999;">No reviews</span>`;
+
                         li.innerHTML = `
-                            <div class="suggestion-icon">📍</div>
-                            <div class="suggestion-text">
-                                <div class="suggestion-title">
-                                    ${item.structured_formatting.main_text}
-                                </div>
-                                <div class="suggestion-subtitle">
-                                    ${item.structured_formatting.secondary_text ?? ''}
-                                </div>
+                        <div class="suggestion-icon">📍</div>
+                        <div class="suggestion-text">
+                            <div class="suggestion-title">
+                                ${item.main_text}
                             </div>
-                        `;
+                            <div class="suggestion-subtitle">
+                                ${item.secondary_text}
+                            </div>
+                            <div style="font-size:12px; margin-top:3px; color:red;">
+                                ${ratingHtml}
+                            </div>
+                        </div>
+                    `;
 
                         li.addEventListener('mousedown', () => {
                             
                             // input.value = item.structured_formatting.main_text;
                             input.dataset.placeId = item.place_id;
                              
-                            main_text.innerHTML = `📍 Selected business: <strong>${item.structured_formatting.main_text}</strong>`;
+                            //main_text.innerHTML = `📍 Selected business: <strong>${item.structured_formatting.main_text}</strong>`;
+
+                            if (item.total_reviews === 0) {
+                            main_text.innerHTML =
+                                `❌ <strong>${item.main_text}</strong> has no Google reviews`;
+                            } else {
+                                main_text.innerHTML =
+                                    `⭐ <strong>${item.rating}</strong> (${item.total_reviews} reviews)
+                                    <br>📍 ${item.main_text}`;
+                            }
+                            
                             list.style.display = 'none';
                         });
-
-                        
-                        
 
                         list.appendChild(li);
                     });
