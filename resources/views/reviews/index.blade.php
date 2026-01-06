@@ -1256,34 +1256,26 @@
 
 
     function sanitizeDomain(input) {
-        if (!input) return '';
+    if (!input) return '';
 
-        let value = input
-            .trim()
-            .toLowerCase();
+    let value = input.trim().toLowerCase();
 
-        // Remove protocol
-        value = value.replace(/^https?:\/\//, '');
+    // Remove protocol
+    value = value.replace(/^https?:\/\//, '');
 
-        // Remove everything after /
-        value = value.split('/')[0];
+    // Remove everything after /
+    value = value.split('/')[0];
 
-        // Remove www.
-        value = value.replace(/^www\./, '');
+    // Remove www.
+    value = value.replace(/^www\./, '');
 
-        // If user entered only "www" or invalid
-        if (!value || value === 'www') {
-            return '';
-        }
-
-        // Reduce subdomains → root domain
-        const parts = value.split('.');
-        if (parts.length > 2) {
-            value = parts.slice(-2).join('.');
-        }
-
-       return value;
+    // Basic validation
+    if (!value || !value.includes('.')) {
+        return '';
     }
+
+    return value;
+}
 
     const input = document.getElementById('domain');
     const list = document.getElementById('domain-suggestions');

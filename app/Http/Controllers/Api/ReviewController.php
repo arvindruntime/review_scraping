@@ -28,8 +28,7 @@ class ReviewController extends Controller
         $domain  = strtolower(trim($request->input('domain')));
         $sources = $request->input('sources');
         $google_place_id = $request->input('google_place_id');
-        $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));
-        
+        $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));      
         
         /* ======================================================
         1) Try DB cache
