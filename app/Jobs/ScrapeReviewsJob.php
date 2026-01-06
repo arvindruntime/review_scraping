@@ -16,8 +16,8 @@ class ScrapeReviewsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 300;
-    public int $tries = 3;
+    public int $timeout = 600;
+    public int $tries = 2;
 
     protected string $domain;
     protected array $sources;
@@ -62,7 +62,8 @@ class ScrapeReviewsJob implements ShouldQueue
                         $ratings['google'] = $google['summary'];
                     }
 
-                    $googleCount = count($googleReviews);
+                    // $googleCount = count($googleReviews);    
+                    $googleCount = $google['summary']['total'] ?? count($googleReviews);
 
                     // Save Google results even if zero were found (delete old ones, update counts)
                     DB::transaction(function () use ($search, $googleReviews, $ratings, $googleCount) {
@@ -95,13 +96,17 @@ class ScrapeReviewsJob implements ShouldQueue
                         $trustpilotCount = $search->trustpilot_reviews ?? 0;
                         $totalReviews = $trustpilotCount + $googleCount;
 
+                        $status = 'completed';
+                        if (in_array('trustpilot', $this->sources) && $trustpilotCount === 0) {
+                            $status = 'partial';
+                        }
+
                         $search->update([
                             'sources' => $this->sources,
                             'ratings' => $existingRatings,
                             'google_reviews' => $googleCount,
                             'total_reviews' => $totalReviews,
-                            // when trustpilot is selected and not finished, mark partial, otherwise completed
-                            'status' => in_array('trustpilot', $this->sources) && $trustpilotCount === 0 ? 'partial' : 'completed',
+                            'status' => $status,
                         ]);
 
                         \Log::info('Google results saved to search', [

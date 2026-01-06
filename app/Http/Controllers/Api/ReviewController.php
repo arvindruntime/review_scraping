@@ -25,11 +25,14 @@ class ReviewController extends Controller
 
         ]);
 
-        $domain  = strtolower(trim($request->input('domain')));
+        
+        // $domain  = strtolower(trim($request->input('domain')));
+        $domain = $this->normalizeDomain($request->input('domain'));
         $sources = $request->input('sources');
         $google_place_id = $request->input('google_place_id');
         $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));      
         
+        // dd($domain, $sources, $limit, $google_place_id, $request);
         /* ======================================================
         1) Try DB cache
         ====================================================== */
@@ -39,12 +42,16 @@ class ReviewController extends Controller
         
         if ($search && in_array($search->status, ['completed', 'partial'])) {
             
-            if ($search->status === 'partial') {
+            if ($search) {
                 return response()->json([
-                    'status' => 'processing',
-                    'message' => 'Google reviews ready. Trustpilot still processing.',
+                    'status'  => $search->status,
+                    'domain'  => $domain,
+                    'message' => $search->status === 'completed'
+                        ? 'Reviews fetched successfully.'
+                        : 'Scraping reviews in background.',
                 ], 202);
             }
+
                         
             \Log::info('Found completed search in DB', [
                 'domain'  => $domain,
@@ -83,6 +90,7 @@ class ReviewController extends Controller
             'sources' => $sources,
             'limit'   => $limit,
         ]);
+        
         
         ScrapeReviewsJob::dispatch($domain, $sources, $limit, $google_place_id);   
         
@@ -140,45 +148,38 @@ class ReviewController extends Controller
             return ['reviews' => [], 'summary' => null];
         }
 
-        if($google_place_id)
-        {
-            $run = Http::post(
-                "https://api.apify.com/v2/acts/{$actorId}/run-sync-get-dataset-items?token={$token}",
-                [
-                    // Try company name (strip tld) and domain as fallbacks for better matching
-                    // 'searchStringsArray' => $searchStrings,
-                    // 'language'           => 'en',
-                    'placeIds'        => [$google_place_id],
-                    'maxReviews'         => $limit,
-                    'reviewsSort'        => 'newest',
-                    'includeReviews'     => true,
-                ]
-            );
-        }
-        else
-        {
-            $cleanName = preg_replace('#^https?://#', '', $domain);
-            $cleanName = preg_replace('#^www\.#', '', $cleanName);
-            $cleanName = preg_replace('#\..*$#', '', $cleanName);
+    $payload = [
+        'maxReviews'     => $limit,
+        'reviewsSort'    => 'newest',
+        'includeReviews' => true,
+    ];
 
-            $searchStrings = [
-                "{$cleanName} Australia",
-                "{$cleanName} Sydney"
-            ];
+    if (!empty($google_place_id)) {
+        $payload['placeIds'] = [$google_place_id];
 
-            $run = Http::post(
-                "https://api.apify.com/v2/acts/{$actorId}/run-sync-get-dataset-items?token={$token}",
-                [
-                    // Try company name (strip tld) and domain as fallbacks for better matching
-                    'searchStringsArray' => $searchStrings,
-                    // 'language'           => 'en',
-                    // 'placeIds'        => [$google_place_id],
-                    'maxReviews'         => $limit,
-                    'reviewsSort'        => 'newest',
-                    'includeReviews'     => true,
-                ]
-            );
-        }
+        \Log::info('Apify Google actor working with placeid: ', [
+                'google_place_id' => $google_place_id
+            ]);
+
+    } else {
+        $cleanName = preg_replace('#^https?://#', '', $domain);
+        $cleanName = preg_replace('#^www\.#', '', $cleanName);
+        $cleanName = preg_replace('#\..*$#', '', $cleanName);
+
+        $payload['searchStringsArray'] = [
+            "{$cleanName} Australia",
+            "{$cleanName} Sydney",
+        ];
+
+        \Log::info('Apify Google actor working with domain name: ', [
+                'domain name' => $cleanName
+            ]);
+    }
+
+    $run = Http::post(
+        "https://api.apify.com/v2/acts/{$actorId}/run-sync-get-dataset-items?token={$token}",
+        $payload
+    );
 
         if (!$run->successful()) {
             \Log::error('Apify Google actor failed', [
@@ -207,10 +208,7 @@ class ReviewController extends Controller
             ];
         }
 
-         \Log::info('Google Reviews Scraped', [
-                'run' => $run,
-                'data' => $run->json('data'),
-            ]);
+            \Log::info('Google Reviews Scraped');
 
             usort($reviews, fn ($a, $b) =>
                 strcmp((string) $b['date'], (string) $a['date'])
@@ -258,11 +256,19 @@ class ReviewController extends Controller
             'dataset_id' => $run['defaultDatasetId']
         ];
     }
+
+    private function normalizeDomain(string $domain): string
+    {
+        $domain = strtolower(trim($domain));
+        $domain = preg_replace('#^https?://#', '', $domain);
+        $domain = preg_replace('#^www\.#', '', $domain);
+        return rtrim($domain, '/');
+    }
+
     
     public function getReviews(Request $request)
     {
-        
-        $domain  = strtolower(trim($request->input('domain')));
+        $domain = $this->normalizeDomain($request->input('domain'));
         $sources = $request->input('sources', []);
         $limit   = (int) ($request->input('limit') ?? 20);
         
