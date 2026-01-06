@@ -37,22 +37,13 @@ class ReviewController extends Controller
         1) Try DB cache
         ====================================================== */
         $search = Search::where('domain', $domain)->first();
+
+        
         
         \Log::info('ScrapeReviews fun called');
         
         if ($search && in_array($search->status, ['completed', 'partial'])) {
-            
-            if ($search) {
-                return response()->json([
-                    'status'  => $search->status,
-                    'domain'  => $domain,
-                    'message' => $search->status === 'completed'
-                        ? 'Reviews fetched successfully.'
-                        : 'Scraping reviews in background.',
-                ], 202);
-            }
-
-                        
+                                    
             \Log::info('Found completed search in DB', [
                 'domain'  => $domain,
                 'sources' => $sources,
