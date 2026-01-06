@@ -37,8 +37,6 @@ class ReviewController extends Controller
         1) Try DB cache
         ====================================================== */
         $search = Search::where('domain', $domain)->first();
-
-        
         
         \Log::info('ScrapeReviews fun called');
         
@@ -135,42 +133,44 @@ class ReviewController extends Controller
         $token   = config('apify.token');
         $actorId = config('apify.google_actor');
 
-        if (empty($google_place_id)) {
-            return ['reviews' => [], 'summary' => null];
-        }
+        \Log::info('fetchFromGoogle started', [
+            'domain' => $domain,
+            'limit' => $limit,
+            'google_place_id' => $google_place_id
+        ]);
 
-    $payload = [
-        'maxReviews'     => $limit,
-        'reviewsSort'    => 'newest',
-        'includeReviews' => true,
-    ];
-
-    if (!empty($google_place_id)) {
-        $payload['placeIds'] = [$google_place_id];
-
-        \Log::info('Apify Google actor working with placeid: ', [
-                'google_place_id' => $google_place_id
-            ]);
-
-    } else {
-        $cleanName = preg_replace('#^https?://#', '', $domain);
-        $cleanName = preg_replace('#^www\.#', '', $cleanName);
-        $cleanName = preg_replace('#\..*$#', '', $cleanName);
-
-        $payload['searchStringsArray'] = [
-            "{$cleanName} Australia",
-            "{$cleanName} Sydney",
+        $payload = [
+            'maxReviews'     => $limit,
+            'reviewsSort'    => 'newest',
+            'includeReviews' => true,
         ];
 
-        \Log::info('Apify Google actor working with domain name: ', [
-                'domain name' => $cleanName
-            ]);
-    }
+        if (!empty($google_place_id)) {
+            $payload['placeIds'] = [$google_place_id];
 
-    $run = Http::post(
-        "https://api.apify.com/v2/acts/{$actorId}/run-sync-get-dataset-items?token={$token}",
-        $payload
-    );
+            \Log::info('Apify Google actor working with placeid: ', [
+                    'google_place_id' => $google_place_id
+                ]);
+
+        } else {
+            $cleanName = preg_replace('#^https?://#', '', $domain);
+            $cleanName = preg_replace('#^www\.#', '', $cleanName);
+            $cleanName = preg_replace('#\..*$#', '', $cleanName);
+
+            $payload['searchStringsArray'] = [
+                "{$cleanName} Australia",
+                "{$cleanName} Sydney",
+            ];
+
+            \Log::info('Apify Google actor working with domain name: ', [
+                    'domain name' => $cleanName
+                ]);
+        }
+
+        $run = Http::post(
+            "https://api.apify.com/v2/acts/{$actorId}/run-sync-get-dataset-items?token={$token}",
+            $payload
+        );
 
         if (!$run->successful()) {
             \Log::error('Apify Google actor failed', [
@@ -181,7 +181,7 @@ class ReviewController extends Controller
         }
 
         $items = $run->json();
-
+        
         if (empty($items[0])) {
             return ['reviews' => [], 'summary' => null];
         }

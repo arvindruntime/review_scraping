@@ -50,11 +50,14 @@ class ScrapeReviewsJob implements ShouldQueue
                     'domain'  => $this->domain,
                     'sources' => $this->sources,
                     'limit'   => $this->limit,
+                    'placeid' => $this->google_place_id
                 ]);
 
                 if (in_array('google', $this->sources)) {
                     $google = app(\App\Http\Controllers\Api\ReviewController::class)
                         ->fetchFromGoogle($this->domain, $this->limit, $this->google_place_id);
+
+                        \Log::info('called fetchFromGoogle');
 
                     $googleReviews = $google['reviews'] ?? [];
 
