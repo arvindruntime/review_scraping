@@ -9,6 +9,8 @@ class Search extends Model
 {
     protected $fillable = [
         'domain',
+        'google_place_id',
+        'business_name',
         'sources',
         'ratings',
         'total_reviews',

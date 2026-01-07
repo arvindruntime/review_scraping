@@ -27,16 +27,29 @@ class ReviewController extends Controller
 
         
         // $domain  = strtolower(trim($request->input('domain')));
-        $domain = $this->normalizeDomain($request->input('domain'));
+        $domain = $request->input('domain');
         $sources = $request->input('sources');
         $google_place_id = $request->input('google_place_id');
+        $business_name = $request->input('business_name');
         $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));      
         
         // dd($domain, $sources, $limit, $google_place_id, $request);
         /* ======================================================
         1) Try DB cache
         ====================================================== */
-        $search = Search::where('domain', $domain)->first();
+        // $search = Search::where('domain', $domain)
+        // ->orWhere('google_place_id', $google_place_id)
+        // ->first();
+
+        $search = Search::where(function ($query) use ($domain, $google_place_id) {
+        if (!empty($domain)) {
+            $query->where('domain', $domain);
+        }
+
+        if (!empty($google_place_id)) {
+            $query->orWhere('google_place_id', $google_place_id);
+        }
+        })->first();
         
         \Log::info('ScrapeReviews fun called');
         
@@ -259,7 +272,7 @@ class ReviewController extends Controller
     
     public function getReviews(Request $request)
     {
-        $domain = $this->normalizeDomain($request->input('domain'));
+        $domain = $request->input('domain');
         $sources = $request->input('sources', []);
         $limit   = (int) ($request->input('limit') ?? 20);
         

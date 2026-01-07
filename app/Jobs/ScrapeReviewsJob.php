@@ -36,10 +36,28 @@ class ScrapeReviewsJob implements ShouldQueue
     {
         \Log::info('Jobs handle called');
                     
-        $search = Search::updateOrCreate(
-            ['domain' => $this->domain],
-            ['status' => 'processing']
-        );
+        // $search = Search::updateOrCreate(
+        //     ['domain' => $this->domain],
+        //     ['status' => 'processing']
+        // );
+
+        $attributes = [
+                'domain' => $this->domain,
+                'status' => 'processing',
+            ];
+
+            // Only add google_place_id if it's not empty
+            if (!empty($this->google_place_id)) {
+                $attributes['google_place_id'] = $this->google_place_id;
+            }
+
+            // Lookup priority: google_place_id if exists, else domain
+            $search = Search::updateOrCreate(
+                !empty($this->google_place_id)
+                    ? ['google_place_id' => $this->google_place_id]
+                    : ['domain' => $this->domain],
+                $attributes
+            );
                      
         try {
                 $allReviews   = [];

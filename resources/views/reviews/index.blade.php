@@ -748,6 +748,9 @@
                 placeholder="Search here"
                 autocomplete="off"
             >
+
+            <input type="hidden" id="business_name" >
+
             <ul id="domain-suggestions"></ul>
             <br>
             
@@ -841,10 +844,13 @@
         const domain = sanitizeDomain(userInput);
 
         const google_place_id = domainInput.dataset.placeId || null;
-        
+
+        const business_name = document.getElementById('business_name');
+
         console.log('google_place_id:', google_place_id);
+
         if (!domain) {
-            showError('Please enter a valid domain (example: doman.com)');
+            showError('Please enter a business name or domain.');
             return;
         }
 
@@ -886,6 +892,7 @@
                     domain: domain,
                     sources: sources,
                     google_place_id: google_place_id,
+                    business_name: business_name,
                     limit: 20
                 }),
                 signal: controller.signal
@@ -952,7 +959,12 @@
     
     
     async function getReviews() {
-        const get_domain = document.getElementById('domain').value.trim();
+        // const get_domain = document.getElementById('domain').value.trim();
+
+        const domainInput1 = document.getElementById('domain');
+        const userInput1 = domainInput1.value.trim();
+        const get_domain = sanitizeDomain(userInput1);
+
         if (!get_domain) {
             showError('Please enter a domain');
             return;
@@ -1256,30 +1268,43 @@
 
 
     function sanitizeDomain(input) {
-    if (!input) return '';
+        if (!input) return '';
 
-    let value = input.trim().toLowerCase();
+        let value = input.trim();
 
-    // Remove protocol
-    value = value.replace(/^https?:\/\//, '');
+        // Detect domain
+        const domainRegex = /^(https?:\/\/)?(www\.)?[a-z0-9-]+\.[a-z]{2,}/i;
 
-    // Remove everything after /
-    value = value.split('/')[0];
+       if (domainRegex.test(value)) {
+            // Domain flow
+            value = value.toLowerCase();
 
-    // Remove www.
-    value = value.replace(/^www\./, '');
+            // Remove protocol
+            value = value.replace(/^https?:\/\//, '');
 
-    // Basic validation
-    if (!value || !value.includes('.')) {
-        return '';
+            // Remove everything after /
+            value = value.split('/')[0];
+
+            // Remove www.
+            value = value.replace(/^www\./, '');
+
+            // Final validation
+            if (!value || !value.includes('.')) {
+                return '';
+            }
+
+            return value; // cleaned domain
+        }
+        // Business name flow (return as-is)
+        return value;
     }
 
-    return value;
-}
 
     const input = document.getElementById('domain');
     const list = document.getElementById('domain-suggestions');
     const main_text = document.getElementById('main_text');
+
+    const business_name = document.getElementById('business_name');
 
     let debounce = null;
 
@@ -1289,6 +1314,8 @@
         delete input.dataset.placeId;
         main_text.textContent = '';
 
+        business_name.value = value;
+        
         if (value.length < 2) {
             list.style.display = 'none';
             return;
@@ -1333,6 +1360,8 @@
                             
                             // input.value = item.structured_formatting.main_text;
                             input.dataset.placeId = item.place_id;
+
+                            business_name.value = item.main_text;
                              
                             //main_text.innerHTML = `📍 Selected business: <strong>${item.structured_formatting.main_text}</strong>`;
 
