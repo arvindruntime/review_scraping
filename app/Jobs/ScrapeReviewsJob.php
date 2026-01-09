@@ -24,12 +24,13 @@ class ScrapeReviewsJob implements ShouldQueue
     protected int $limit;
     protected ?string $google_place_id = null;
 
-    public function __construct(string $domain, array $sources, int $limit, ?string $google_place_id = null)
+    public function __construct(string $domain, array $sources, int $limit, ?string $google_place_id = null, ?string $business_name= null)
     {
         $this->domain  = $domain;
         $this->sources = $sources;
         $this->limit   = $limit;
         $this->google_place_id = $google_place_id;
+        $this->business_name = $business_name;
     }
 
     public function handle(): void
@@ -51,6 +52,10 @@ class ScrapeReviewsJob implements ShouldQueue
                 $attributes['google_place_id'] = $this->google_place_id;
             }
 
+            if (!empty($this->business_name) && in_array('google', $this->sources)) {
+                $attributes['business_name'] = $this->business_name;
+            }
+
             // Lookup priority: google_place_id if exists, else domain
             $search = Search::updateOrCreate(
                 !empty($this->google_place_id)
@@ -68,7 +73,7 @@ class ScrapeReviewsJob implements ShouldQueue
                     'domain'  => $this->domain,
                     'sources' => $this->sources,
                     'limit'   => $this->limit,
-                    'placeid' => $this->google_place_id
+                    'placeid' => $this->google_place_id,
                 ]);
 
                 if (in_array('google', $this->sources)) {
@@ -146,6 +151,8 @@ class ScrapeReviewsJob implements ShouldQueue
                     $run = app(\App\Http\Controllers\Api\ReviewController::class)
                         ->startTrustpilotRun($this->domain);
 
+                        \Log::info('TP Sync',['run' => $run]);
+
                     CheckTrustpilotRunJob::dispatch(
                         $run['run_id'],
                         $run['dataset_id'],
@@ -154,7 +161,7 @@ class ScrapeReviewsJob implements ShouldQueue
                     )->delay(now()->addSeconds(30));
                 }               
 
-                \Log::info('ScrapeReviewsJob completed successfully', [
+                \Log::info('Trustpilot job dispached', [
                 'domain' => $this->domain
                 ]);
             

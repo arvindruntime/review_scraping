@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Http;
 use App\Jobs\ScrapeReviewsJob;
+use App\Helpers\DomainHelper;
+
 
 
 class ReviewController extends Controller
@@ -18,6 +20,8 @@ class ReviewController extends Controller
     }
     public function scrapeReviews(Request $request)
     {
+        \Log::info('ScrapeReviews function called');
+
         $request->validate([
             'domain'  => 'required|string',
             'sources' => 'required|array|min:1',
@@ -25,34 +29,32 @@ class ReviewController extends Controller
 
         ]);
 
-        
-        // $domain  = strtolower(trim($request->input('domain')));
+        \Log::info('ScrapeReviews validation called');
+
         $domain = $request->input('domain');
         $sources = $request->input('sources');
-        $google_place_id = $request->input('google_place_id');
-        $business_name = $request->input('business_name');
+        $google_place_id = $request->input('google_place_id') ?? '';
+        $business_name = $request->input('business_name') ?? '';
         $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));      
         
-        // dd($domain, $sources, $limit, $google_place_id, $request);
-        /* ======================================================
-        1) Try DB cache
-        ====================================================== */
-        // $search = Search::where('domain', $domain)
-        // ->orWhere('google_place_id', $google_place_id)
-        // ->first();
-
-        $search = Search::where(function ($query) use ($domain, $google_place_id) {
+        $search = Search::where(function ($query) use ($domain, $google_place_id, $sources) {
         if (!empty($domain)) {
             $query->where('domain', $domain);
+        }
+
+        if (!empty($sources)) {
+            $query->where(function ($q) use ($sources) {
+                foreach ($sources as $source) {
+                    $q->orWhereJsonContains('sources', $source);
+                }
+            });
         }
 
         if (!empty($google_place_id)) {
             $query->orWhere('google_place_id', $google_place_id);
         }
         })->first();
-        
-        \Log::info('ScrapeReviews fun called');
-        
+                
         if ($search && in_array($search->status, ['completed', 'partial'])) {
                                     
             \Log::info('Found completed search in DB', [
@@ -60,6 +62,7 @@ class ReviewController extends Controller
                 'sources' => $sources,
                 'limit'   => $limit,
             ]);
+
             $reviews = $search->reviews()
                 ->whereIn('source', $sources)
                 ->orderByDesc('date')
@@ -67,6 +70,9 @@ class ReviewController extends Controller
                 ->get();
 
             if ($reviews->isNotEmpty()) {
+
+                \Log::info('Reviews fetched successfully from db');
+
                 return response()->json([
                     'status'  => 'completed',
                     'domain'        => $domain,
@@ -93,10 +99,11 @@ class ReviewController extends Controller
             'limit'   => $limit,
         ]);
         
+        // dd($domain, $sources, $limit, $google_place_id, $business_name);
         
-        ScrapeReviewsJob::dispatch($domain, $sources, $limit, $google_place_id);   
+        ScrapeReviewsJob::dispatch($domain, $sources, $limit, $google_place_id, $business_name);   
         
-        \Log::info('End Dispatched ScrapeReviewsJob');
+        \Log::info('After Start Dispatched exicuted next line');
             
         // show processing response but only include counts/ratings for requested sources
         $allRatings = $search->ratings ?? [];
@@ -110,6 +117,7 @@ class ReviewController extends Controller
         return response()->json([
             'status'  => 'processing',
             'domain'  => $domain,
+            'business_name' => $business_name,
             'message' => 'Reviews are being fetched.',
             'sources' => $sources,
             'ratings' => $filteredRatings,
@@ -234,17 +242,29 @@ class ReviewController extends Controller
         // $actorId = 'nikita-sviridenko~trustpilot-reviews-scraper';
         $actorId = config('apify.trustpilot_actor');
 
-        $companyDomain = str_replace(['https://', 'http://', 'www.'], '', $domain);
+        //$companyDomain = str_replace(['https://', 'http://', 'www.'], '', $domain);
+        try {
+        $companyDomain = DomainHelper::normalizeForTrustpilot($domain);
+        } catch (\Throwable $e) {
+            \Log::error('Invalid domain for Trustpilot', [
+                'domain' => $domain,
+                'error'  => $e->getMessage()
+            ]);
+
+            throw new \InvalidArgumentException('Invalid domain');
+        }
 
         $response = Http::post(
-            "https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}}&memory=4096",
+            "https://api.apify.com/v2/acts/{$actorId}/runs?token={$token}&memory=4096",
             [
                 "companyDomain" => $companyDomain,
                 "contentToExtract" => "reviews",
-                "sortBy" => "recency",
+                // "sortBy" => "recency",
+                "sort" => "recency",
                 "filterByVerified" => false,
                 "startFromPageNumber" => 1,
                 "endAtPageNumber" => 1,
+                'count' => 20,
                 "proxyConfiguration" => ["useApifyProxy" => true]
             ]
         );
@@ -253,6 +273,13 @@ class ReviewController extends Controller
             throw new \Exception('Failed to start Trustpilot actor');
         }
 
+        \Log::info('TP sync called and response is',[
+            'run' => $response->json(),
+            'passed_domain' => $domain,
+            'normlizeddomain' =>$companyDomain,
+        ]);
+
+       
         $run = $response->json('data');
 
         return [

@@ -767,12 +767,12 @@
 
     <div class="source-dark">
         <label>
-            <input type="checkbox" id="filter-trustpilot">
+            <input type="checkbox" id="filter-trustpilot" checked>
             ⭐ Trustpilot
         </label>
 
         <label>
-            <input type="checkbox" id="filter-google" checked>
+            <input type="checkbox" id="filter-google">
             🌐 Google Reviews
         </label>
     </div>
@@ -844,31 +844,30 @@
         const domain = sanitizeDomain(userInput);
 
         const google_place_id = domainInput.dataset.placeId || null;
-
-        const business_name = document.getElementById('business_name');
-
+        const business_name = document.getElementById('business_name').value;
+        
         console.log('google_place_id:', google_place_id);
 
-        if (!domain) {
-            showError('Please enter a business name or domain.');
-            return;
-        }
-
         const sources = [];
-        if (document.getElementById('filter-google').checked) {
-            sources.push('google');
 
-            // if (!google_place_id) {
-            // showError('Please select a business from Google suggestions');
-            // return;
-            // }
-        }
-        if (document.getElementById('filter-trustpilot').checked) {
-            sources.push('trustpilot');
-        }
+        const isGoogle = document.getElementById('filter-google').checked;
+        const isTrustpilot = document.getElementById('filter-trustpilot').checked;
+
+        if (isGoogle) sources.push('google');
+        if (isTrustpilot) sources.push('trustpilot');
 
         if (sources.length === 0) {
             showError('Please select at least one source');
+            return;
+        }
+
+        if (isGoogle && !business_name) {
+            showError('Please select a business from Google suggestions');
+            return;
+        }
+
+        if (isTrustpilot && !domain) {
+            showError('Please enter a valid domain name');
             return;
         }
         // UI start
@@ -1309,6 +1308,13 @@
     let debounce = null;
 
     input.addEventListener('input', function () {
+
+        const isGoogleSelected = document.getElementById('filter-google')?.checked;
+        if (!isGoogleSelected) {
+            list.style.display = 'none';
+            return;
+        }
+
         const value = this.value.trim();
 
         delete input.dataset.placeId;
