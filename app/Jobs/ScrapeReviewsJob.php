@@ -45,6 +45,7 @@ class ScrapeReviewsJob implements ShouldQueue
         $attributes = [
                 'domain' => $this->domain,
                 'status' => 'processing',
+                'sources' => $this->sources,
             ];
 
             // Only add google_place_id if it's not empty

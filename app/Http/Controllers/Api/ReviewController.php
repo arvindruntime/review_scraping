@@ -35,10 +35,13 @@ class ReviewController extends Controller
         $sources = $request->input('sources');
         $google_place_id = $request->input('google_place_id') ?? '';
         $business_name = $request->input('business_name') ?? '';
-        $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));      
+        $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));  
+        
+       
         
         $search = Search::where(function ($query) use ($domain, $google_place_id, $sources) {
         if (!empty($domain)) {
+             
             $query->where('domain', $domain);
         }
 

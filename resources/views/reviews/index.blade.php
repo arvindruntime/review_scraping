@@ -1022,7 +1022,7 @@
 
             if (get_data.status === 'processing') {
                 document.getElementById('loading').innerText =
-                    'Scraping reviews in background… this may take up to 1–2 minutes.';
+                    'Scraping reviews in background… This may take a few moments.';
 
                 // if server returned partial results/counts include them immediately
                 if (get_data.reviews?.length > 0 || (get_data.google_reviews || 0) > 0 || (get_data.trustpilot_reviews || 0) > 0) {
