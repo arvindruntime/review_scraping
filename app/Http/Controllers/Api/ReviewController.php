@@ -367,76 +367,110 @@ class ReviewController extends Controller
     }
 
     public function googlePlaceSuggestions(Request $request)
-{
-    $input = trim($request->get('domain'));
+    {
+        $input = trim($request->get('domain'));
 
-    if (!$input) {
-        return response()->json(['predictions' => []]);
-    }
+        if (!$input) {
+            return response()->json(['predictions' => []]);
+        }
 
-    // Normalize domain → keyword
-    $keyword = preg_replace('#^https?://#', '', $input);
-    $keyword = preg_replace('#^www\.#', '', $keyword);
-    $keyword = preg_replace('#\.(com|in|au|co|net|org|io|ai|uk)(/.*)?$#i', '', $keyword);
+        // Normalize domain → keyword
+        $keyword = preg_replace('#^https?://#', '', $input);
+        $keyword = preg_replace('#^www\.#', '', $keyword);
+        $keyword = preg_replace('#\.(com|in|au|co|net|org|io|ai|uk)(/.*)?$#i', '', $keyword);
 
-    // ✅ Autocomplete API
-    $autoResponse = Http::get(
-        'https://maps.googleapis.com/maps/api/place/autocomplete/json',
-        [
-            'input'    => $keyword,
-            'language' => 'en',
-            'locationbias' => 'circle:50000@20.5937,78.9629', // India bias
-            // Australia bias (soft, not restrictive)
-            // 'location' => '-25.2744,133.7751',
-            'radius'   => 2000000,
-
-            'key'      => config('services.google.places_key'),
-        ]
-    )->json();
-
-    // ✅ Proper status handling
-    if (($autoResponse['status'] ?? '') !== 'OK') {
-        return response()->json([
-            'predictions' => [],
-            'status'      => $autoResponse['status'] ?? 'UNKNOWN',
-            'error'       => $autoResponse['error_message'] ?? null,
-        ]);
-    }
-
-    if (empty($autoResponse['predictions'])) {
-        return response()->json(['predictions' => []]);
-    }
-
-    // Limit to top 5 (cost control)
-    $predictions = array_slice($autoResponse['predictions'], 0, 5);
-    $results = [];
-
-    foreach ($predictions as $item) {
-
-        // Place Details API (rating + total reviews)
-        $details = Http::get(
-            'https://maps.googleapis.com/maps/api/place/details/json',
+        // ✅ Autocomplete API
+        $autoResponse = Http::get(
+            'https://maps.googleapis.com/maps/api/place/autocomplete/json',
             [
-                'place_id' => $item['place_id'],
-                'fields'   => 'rating,user_ratings_total',
+                'input'    => $keyword,
+                'language' => 'en',
+                'locationbias' => 'circle:50000@20.5937,78.9629', // India bias
+                // Australia bias (soft, not restrictive)
+                // 'location' => '-25.2744,133.7751',
+                'radius'   => 2000000,
+
                 'key'      => config('services.google.places_key'),
             ]
         )->json();
 
-        $results[] = [
-            'place_id'       => $item['place_id'],
-            'main_text'      => $item['structured_formatting']['main_text'],
-            'secondary_text' => $item['structured_formatting']['secondary_text'] ?? '',
-            'rating'         => $details['result']['rating'] ?? null,
-            'total_reviews'  => $details['result']['user_ratings_total'] ?? 0,
-        ];
+        // ✅ Proper status handling
+        if (($autoResponse['status'] ?? '') !== 'OK') {
+            return response()->json([
+                'predictions' => [],
+                'status'      => $autoResponse['status'] ?? 'UNKNOWN',
+                'error'       => $autoResponse['error_message'] ?? null,
+            ]);
+        }
+
+        if (empty($autoResponse['predictions'])) {
+            return response()->json(['predictions' => []]);
+        }
+
+        // Limit to top 5 (cost control)
+        $predictions = array_slice($autoResponse['predictions'], 0, 5);
+        $results = [];
+
+        foreach ($predictions as $item) {
+
+            // Place Details API (rating + total reviews)
+            $details = Http::get(
+                'https://maps.googleapis.com/maps/api/place/details/json',
+                [
+                    'place_id' => $item['place_id'],
+                    'fields'   => 'rating,user_ratings_total',
+                    'key'      => config('services.google.places_key'),
+                ]
+            )->json();
+
+            $results[] = [
+                'place_id'       => $item['place_id'],
+                'main_text'      => $item['structured_formatting']['main_text'],
+                'secondary_text' => $item['structured_formatting']['secondary_text'] ?? '',
+                'rating'         => $details['result']['rating'] ?? null,
+                'total_reviews'  => $details['result']['user_ratings_total'] ?? 0,
+            ];
+        }
+
+        return response()->json([
+            'predictions' => $results
+        ]);
     }
 
-    return response()->json([
-        'predictions' => $results
-    ]);
-}
+    public function trustpilotSuggestions(Request $request)
+    {
+        $query = trim($request->get('q'));
 
+        if (strlen($query) < 3) {
+            return response()->json([]);
+        }
 
+        // 1️⃣ typing-safe validation
+        if (!DomainHelper::looksLikeDomain($query)) {
+            return response()->json([]);
+        }
+
+        try {
+            // You can improve this later using Trustpilot search endpoint
+            $domain = DomainHelper::normalizeForTrustpilot($query);
+
+            [$total, $rating] = DomainHelper::fetchMeta($domain);
+
+            return response()->json([
+                [
+                    'domain' => $domain,
+                    'rating' => $rating,
+                    'total_reviews' => $total,
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            \Log::warning('Trustpilot suggestion failed', [
+                'input' => $query,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([]);
+        }
+    }
 }
 

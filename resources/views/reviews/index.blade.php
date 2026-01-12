@@ -1299,98 +1299,217 @@
     }
 
 
+    ////////////////// Auto suggetion code ////////////////////////////////
+
+    document.getElementById('filter-google').addEventListener('change', function () {
+        if (this.checked) {
+            document.getElementById('filter-trustpilot').checked = false;
+        }
+    });
+
+    document.getElementById('filter-trustpilot').addEventListener('change', function () {
+        if (this.checked) {
+            document.getElementById('filter-google').checked = false;
+        }
+    });
+
     const input = document.getElementById('domain');
     const list = document.getElementById('domain-suggestions');
     const main_text = document.getElementById('main_text');
-
     const business_name = document.getElementById('business_name');
-
     let debounce = null;
 
     input.addEventListener('input', function () {
-
-        const isGoogleSelected = document.getElementById('filter-google')?.checked;
-        if (!isGoogleSelected) {
-            list.style.display = 'none';
-            return;
-        }
-
         const value = this.value.trim();
 
-        delete input.dataset.placeId;
-        main_text.textContent = '';
+        const isGoogle = document.getElementById('filter-google').checked;
+        const isTrustpilot = document.getElementById('filter-trustpilot').checked;
 
-        business_name.value = value;
-        
+        list.innerHTML = '';
+        main_text.textContent = '';
+        delete input.dataset.placeId;
+
         if (value.length < 2) {
             list.style.display = 'none';
             return;
         }
-
         clearTimeout(debounce);
 
         debounce = setTimeout(() => {
-            fetch(`/api/google-place-suggestions?domain=${encodeURIComponent(value)}`)
-                .then(res => res.json())
-                .then(data => {
-                    list.innerHTML = '';
+            if (isGoogle) {
+                fetchGoogleSuggestions(value);
+            }
 
-                    if (!data.predictions || data.predictions.length === 0) {
-                        list.style.display = 'none';
-                        return;
-                    }
+            if (isTrustpilot) {
+                fetchTrustpilotSuggestions(value);
+            }
 
-                    data.predictions.forEach(item => {
-                        const li = document.createElement('li');
-
-                        const ratingHtml = item.total_reviews > 0
-                        ? `⭐ ${item.rating} (${item.total_reviews} reviews)`
-                        : `<span style="color:#999;">No reviews</span>`;
-
-                        li.innerHTML = `
-                        <div class="suggestion-icon">📍</div>
-                        <div class="suggestion-text">
-                            <div class="suggestion-title">
-                                ${item.main_text}
-                            </div>
-                            <div class="suggestion-subtitle">
-                                ${item.secondary_text}
-                            </div>
-                            <div style="font-size:12px; margin-top:3px; color:red;">
-                                ${ratingHtml}
-                            </div>
-                        </div>
-                    `;
-
-                        li.addEventListener('mousedown', () => {
-                            
-                            // input.value = item.structured_formatting.main_text;
-                            input.dataset.placeId = item.place_id;
-
-                            business_name.value = item.main_text;
-                             
-                            //main_text.innerHTML = `📍 Selected business: <strong>${item.structured_formatting.main_text}</strong>`;
-
-                            if (item.total_reviews === 0) {
-                            main_text.innerHTML =
-                                `❌ <strong>${item.main_text}</strong> has no Google reviews`;
-                            } else {
-                                main_text.innerHTML =
-                                    `⭐ <strong>${item.rating}</strong> (${item.total_reviews} reviews)
-                                    <br>📍 ${item.main_text}`;
-                            }
-                            
-                            list.style.display = 'none';
-                        });
-
-                        list.appendChild(li);
-                    });
-
-                    list.style.display = 'block';
-                });
         }, 300);
     });
 
+    function fetchGoogleSuggestions(value) {
+    fetch(`/api/google-place-suggestions?domain=${encodeURIComponent(value)}`)
+        .then(res => res.json())
+        .then(data => {
+            if (!data.predictions?.length) {
+                list.style.display = 'none';
+                return;
+            }
+
+            data.predictions.forEach(item => {
+                const li = document.createElement('li');
+
+                const ratingHtml = item.total_reviews > 0
+                    ? `⭐ ${item.rating} (${item.total_reviews} reviews)`
+                    : `<span style="color:#999;">No reviews</span>`;
+
+                li.innerHTML = `
+                    <div class="suggestion-icon">📍</div>
+                    <div class="suggestion-text">
+                        <div class="suggestion-title">${item.main_text}</div>
+                        <div class="suggestion-subtitle">${item.secondary_text}</div>
+                        <div style="font-size:12px; margin-top:3px;">${ratingHtml}</div>
+                    </div>
+                `;
+
+                li.addEventListener('mousedown', () => {
+                    input.dataset.placeId = item.place_id;
+                    business_name.value = item.main_text;
+
+                    main_text.innerHTML = `⭐ <strong>${item.rating}</strong> (${item.total_reviews} reviews)<br>📍 ${item.main_text}`;
+                    list.style.display = 'none';
+                });
+
+                list.appendChild(li);
+            });
+
+            list.style.display = 'block';
+        });
+    }
+
+    function fetchTrustpilotSuggestions(value) {
+    fetch(`/api/trustpilot-suggestions?q=${encodeURIComponent(value)}`)
+        .then(res => res.json())
+        .then(data => {
+            if (!data.length) {
+                list.style.display = 'none';
+                return;
+            }
+
+            data.forEach(item => {
+                const li = document.createElement('li');
+
+                const ratingHtml = item.total_reviews > 0
+                    ? `⭐ ${item.rating} (${item.total_reviews} reviews)`
+                    : `<span style="color:#999;">No reviews</span>`;
+
+                li.innerHTML = `
+                    <div class="suggestion-icon">⭐</div>
+                    <div class="suggestion-text">
+                        <div class="suggestion-title">${item.domain}</div>
+                        <div style="font-size:12px; margin-top:3px;">${ratingHtml}</div>
+                    </div>
+                `;
+
+                li.addEventListener('mousedown', () => {
+                    input.value = item.domain;
+                    business_name.value = item.domain;
+
+                    main_text.innerHTML = `${ratingHtml}<br>🔗 ${item.domain}`;
+                    list.style.display = 'none';
+                });
+
+                list.appendChild(li);
+            });
+
+            list.style.display = 'block';
+        });
+    }
+
+    // input.addEventListener('input', function () {
+
+    //     const isGoogleSelected = document.getElementById('filter-google')?.checked;
+    //     if (!isGoogleSelected) {
+    //         list.style.display = 'none';
+    //         return;
+    //     }
+
+    //     const value = this.value.trim();
+
+    //     delete input.dataset.placeId;
+    //     main_text.textContent = '';
+
+    //     business_name.value = value;
+        
+    //     if (value.length < 2) {
+    //         list.style.display = 'none';
+    //         return;
+    //     }
+
+    //     clearTimeout(debounce);
+
+    //     debounce = setTimeout(() => {
+    //         fetch(`/api/google-place-suggestions?domain=${encodeURIComponent(value)}`)
+    //             .then(res => res.json())
+    //             .then(data => {
+    //                 list.innerHTML = '';
+
+    //                 if (!data.predictions || data.predictions.length === 0) {
+    //                     list.style.display = 'none';
+    //                     return;
+    //                 }
+
+    //                 data.predictions.forEach(item => {
+    //                     const li = document.createElement('li');
+
+    //                     const ratingHtml = item.total_reviews > 0
+    //                     ? `⭐ ${item.rating} (${item.total_reviews} reviews)`
+    //                     : `<span style="color:#999;">No reviews</span>`;
+
+    //                     li.innerHTML = `
+    //                     <div class="suggestion-icon">📍</div>
+    //                     <div class="suggestion-text">
+    //                         <div class="suggestion-title">
+    //                             ${item.main_text}
+    //                         </div>
+    //                         <div class="suggestion-subtitle">
+    //                             ${item.secondary_text}
+    //                         </div>
+    //                         <div style="font-size:12px; margin-top:3px; color:red;">
+    //                             ${ratingHtml}
+    //                         </div>
+    //                     </div>
+    //                 `;
+
+    //                     li.addEventListener('mousedown', () => {
+                            
+    //                         // input.value = item.structured_formatting.main_text;
+    //                         input.dataset.placeId = item.place_id;
+
+    //                         business_name.value = item.main_text;
+                             
+    //                         //main_text.innerHTML = `📍 Selected business: <strong>${item.structured_formatting.main_text}</strong>`;
+
+    //                         if (item.total_reviews === 0) {
+    //                         main_text.innerHTML =
+    //                             `❌ <strong>${item.main_text}</strong> has no Google reviews`;
+    //                         } else {
+    //                             main_text.innerHTML =
+    //                                 `⭐ <strong>${item.rating}</strong> (${item.total_reviews} reviews)
+    //                                 <br>📍 ${item.main_text}`;
+    //                         }
+                            
+    //                         list.style.display = 'none';
+    //                     });
+
+    //                     list.appendChild(li);
+    //                 });
+
+    //                 list.style.display = 'block';
+    //             });
+    //     }, 300);
+    // });
+    
     document.addEventListener('click', e => {
         if (!e.target.closest('.gmaps-search-wrapper')) {
             list.style.display = 'none';

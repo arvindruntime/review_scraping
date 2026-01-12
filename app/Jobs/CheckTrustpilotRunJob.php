@@ -10,6 +10,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use App\Helpers\DomainHelper;
 
 class CheckTrustpilotRunJob implements ShouldQueue
 {
@@ -83,7 +84,7 @@ class CheckTrustpilotRunJob implements ShouldQueue
         }
 
         // 🔥 REAL Trustpilot data
-        [$tpTotal, $tpAvg] = $this->fetchTrustpilotMeta($this->domain);
+        [$tpTotal, $tpAvg] = DomainHelper::fetchTrustpilotMeta($this->domain);
 
         $googleCount = $search->google_reviews ?? 0;
 
@@ -130,30 +131,5 @@ class CheckTrustpilotRunJob implements ShouldQueue
         }
 
         $search->update(['status' => 'processing']);
-    }
-
-    /** ------------------------------
-     * REAL Trustpilot totals
-     * ------------------------------ */
-    private function fetchTrustpilotMeta(string $domain): array
-    {
-        $url = "https://www.trustpilot.com/review/" . $domain;
-
-        $html = Http::withHeaders([
-            'User-Agent' => 'Mozilla/5.0',
-        ])->get($url)->body();
-
-        if (!preg_match('/<script id="__NEXT_DATA__".*?>(.*?)<\/script>/s', $html, $m)) {
-            return [0, 0];
-        }
-
-        $json = json_decode($m[1], true);
-
-        $business = $json['props']['pageProps']['businessUnit'] ?? [];
-
-        return [
-            (int) ($business['numberOfReviews'] ?? 0),
-            round((float) ($business['trustScore'] ?? 0), 1),
-        ];
-    }
+    }    
 }

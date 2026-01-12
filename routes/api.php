@@ -10,6 +10,8 @@ Route::post('/reviews/scrape', [ReviewController::class, 'scrapeReviews']);
 Route::post('/get-reviews', [ReviewController::class, 'getReviews']);
 
 Route::get('/google-place-suggestions', [ReviewController::class, 'googlePlaceSuggestions']);
+Route::get('/trustpilot-suggestions', [ReviewController::class, 'trustpilotSuggestions']);
+
 
 // Admin routes
 Route::prefix('admin')->group(function () {
