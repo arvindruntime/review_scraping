@@ -749,7 +749,7 @@
                 autocomplete="off"
             >
 
-            <input type="hidden" id="business_name" >
+            <input type="hidden" id="business_name" name="business_name">
 
             <ul id="domain-suggestions"></ul>
             <br>
@@ -767,12 +767,12 @@
 
     <div class="source-dark">
         <label>
-            <input type="checkbox" id="filter-trustpilot" checked>
+            <input type="checkbox" id="filter-trustpilot">
             ⭐ Trustpilot
         </label>
 
         <label>
-            <input type="checkbox" id="filter-google">
+            <input type="checkbox" id="filter-google" checked>
             🌐 Google Reviews
         </label>
     </div>
@@ -792,6 +792,12 @@
                 <button class="source-filter-btn active" onclick="filterAndFetch('all')">All Reviews</button>
                 <button class="source-filter-btn" onclick="filterAndFetch('google')">Google</button>
                 <button class="source-filter-btn" onclick="filterAndFetch('trustpilot')">Trustpilot</button>
+            </div>
+
+
+            <div id="ai-summary-box" style="display:none;">
+                <h3>AI Review Summary</h3>
+                <p id="ai-summary-text"></p>
             </div>
 
             <div id="reviews-container">
@@ -816,6 +822,35 @@
 
         </div>
     </div>
+
+    <script>
+    const trustpilotCheckbox = document.getElementById('filter-trustpilot');
+    const googleCheckbox = document.getElementById('filter-google');
+
+    trustpilotCheckbox.addEventListener('change', function () {
+        if (this.checked) {
+            googleCheckbox.checked = false;
+
+            // optional clean-up
+            document.getElementById('business_name').value = '';
+            document.getElementById('domain').dataset.placeId = '';
+
+            const mainText = document.getElementById('main_text');
+            mainText.textContent = '';
+
+            document.getElementById('domain').value = '';
+        }
+    });
+
+    googleCheckbox.addEventListener('change', function () {
+        if (this.checked) {
+            trustpilotCheckbox.checked = false;
+
+            // optional clean-up
+            document.getElementById('domain').value = '';
+        }
+    });
+</script>
 
     <script>
         
@@ -846,7 +881,7 @@
         const google_place_id = domainInput.dataset.placeId || null;
         const business_name = document.getElementById('business_name').value;
         
-        console.log('google_place_id:', google_place_id);
+        console.log('google_place_id & business_name:', google_place_id, business_name);
 
         const sources = [];
 
@@ -1125,6 +1160,8 @@
 
             // Google card: show if we have rating info or a count > 0
             if ((data.ratings && data.ratings.google) || (data.google_reviews > 0)) {
+
+
                 const g = (data.ratings && data.ratings.google) ? data.ratings.google : { rating: 0, total: data.google_reviews };
                 statsGrid.innerHTML += `
                     <div class="stat-card">
@@ -1139,6 +1176,12 @@
                         <div class="stat-note">Google Reviews</div>
                     </div>
                 `;
+
+                if (data.ai_summary) {
+                    document.getElementById('ai-summary-text').innerHTML =
+                    escapeHtml(data.ai_summary).replace(/\n/g, '<br>');
+                    document.getElementById('ai-summary-box').style.display = 'block';
+                }
             }
 
             // Trustpilot card: show if we have rating info or a count > 0
@@ -1157,6 +1200,12 @@
                         <div class="stat-note">Trustpilot Reviews</div>
                     </div>
                 `;
+
+                if (data.ai_summary) {
+                    document.getElementById('ai-summary-text').innerHTML =
+                    escapeHtml(data.ai_summary).replace(/\n/g, '<br>');
+                    document.getElementById('ai-summary-box').style.display = 'block';
+                }
             }
 
             statsGrid.innerHTML += `
@@ -1364,7 +1413,7 @@
 
                         li.addEventListener('mousedown', () => {
                             
-                            // input.value = item.structured_formatting.main_text;
+                            input.value = item.main_text;
                             input.dataset.placeId = item.place_id;
 
                             business_name.value = item.main_text;

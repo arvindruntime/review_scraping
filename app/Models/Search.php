@@ -17,6 +17,7 @@ class Search extends Model
         'google_reviews',
         'trustpilot_reviews',
         'status',
+        'ai_summary',
     ];
 
     protected $casts = [

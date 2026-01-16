@@ -64,6 +64,8 @@ class ScrapeReviewsJob implements ShouldQueue
                     : ['domain' => $this->domain],
                 $attributes
             );
+
+            \Log::info('business_name', ['business_name', $attributes]);
                      
         try {
                 $allReviews   = [];
@@ -139,7 +141,7 @@ class ScrapeReviewsJob implements ShouldQueue
                         \Log::info('Google results saved to search', [
                             'domain' => $this->domain,
                             'google_reviews' => $googleCount,
-                            'total_reviews' => $totalReviews,
+                            'total_reviews' => $totalReviews
                         ]);
 
                     });

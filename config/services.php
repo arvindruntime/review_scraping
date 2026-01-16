@@ -37,5 +37,8 @@ return [
     'google' => [
         'places_key' => env('GOOGLE_PLACES_API_KEY'),
     ],
+    'openai' => [
+        'key' => env('OPENAI_API_KEY'),
+    ],
 
 ];
