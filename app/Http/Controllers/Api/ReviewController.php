@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Http;
 use App\Jobs\ScrapeReviewsJob;
 use App\Helpers\DomainHelper;
 use App\Services\RichReviewsAiService;
+use Carbon\Carbon;
 
 
 class ReviewController extends Controller
@@ -29,36 +30,63 @@ class ReviewController extends Controller
 
         ]);
 
-        \Log::info('ScrapeReviews validation called');
-
-        
-        
         $domain = $request->input('domain');
         $sources = $request->input('sources');
         $google_place_id = $request->input('google_place_id') ?? '';
         $business_name = $request->input('business_name') ?? '';
         $limit   = (int) ($request->input('limit') ?? config('apify.max_reviews', 20));  
-        
+        $expiryDate = Carbon::now()->subDays(7);
+
+        $expiredSearch = Search::where(function ($query) use ($domain, $google_place_id, $sources) {
+            if (!empty($domain)) {
+                $query->where('domain', $domain);
+            }
+
+            if (!empty($sources)) {
+                $query->where(function ($q) use ($sources) {
+                    foreach ($sources as $source) {
+                        $q->orWhereJsonContains('sources', $source);
+                    }
+                });
+            }
+            if (!empty($google_place_id)) {
+                $query->orWhere('google_place_id', $google_place_id);
+            }
+
+        })
+        ->where('created_at', '<', $expiryDate)
+        ->first();
+
+        if ($expiredSearch) {
+            \Log::info('Deleting expired search & related reviews', [
+                'search_id' => $expiredSearch->id,
+                'domain' => $expiredSearch->domain
+            ]);
+
+            // Review::where('search_id', $expiredSearch->id)->delete();
+
+            $expiredSearch->delete();
+        }
+
         \Log::info('Bussiness name is showing in Controller', ['business_name'=> $business_name]);
-       
         
         $search = Search::where(function ($query) use ($domain, $google_place_id, $sources) {
-        if (!empty($domain)) {
-             
-            $query->where('domain', $domain);
-        }
+            if (!empty($domain)) {
+                
+                $query->where('domain', $domain);
+            }
 
-        if (!empty($sources)) {
-            $query->where(function ($q) use ($sources) {
-                foreach ($sources as $source) {
-                    $q->orWhereJsonContains('sources', $source);
-                }
-            });
-        }
+            if (!empty($sources)) {
+                $query->where(function ($q) use ($sources) {
+                    foreach ($sources as $source) {
+                        $q->orWhereJsonContains('sources', $source);
+                    }
+                });
+            }
 
-        if (!empty($google_place_id)) {
-            $query->orWhere('google_place_id', $google_place_id);
-        }
+            if (!empty($google_place_id)) {
+                $query->orWhere('google_place_id', $google_place_id);
+            }
         })->first();
                 
         if ($search && in_array($search->status, ['completed', 'partial'])) {
