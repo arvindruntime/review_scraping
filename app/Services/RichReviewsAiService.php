@@ -114,7 +114,7 @@ HEADER DISPLAY RULES (CRITICAL)
 • If Source = Google Reviews:
   - Display Business Name
   - Do NOT display Domain or URL
-• If Source = Trustpilot:
+• If Source = Trustpilot Reviews:
   - Display Domain
   - Do NOT display Business Name unless explicitly provided
 • Never invent a URL or domain.
@@ -132,7 +132,7 @@ HEADER
 IF Source = Google Reviews:
 Business Name: {$displayName}
 
-IF Source = Trustpilot:
+IF Source = Trustpilot Reviews:
 Domain: {$displayName}
 
 Source: {$source}
