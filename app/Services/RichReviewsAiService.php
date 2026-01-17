@@ -37,28 +37,36 @@ TXT;
         | Header-safe variables
         |--------------------------------------------------------------------------
         */
-        $displayName     = $meta['display_name'] ?? 'N/A';
-        $source          = $meta['source'] ?? 'N/A';
+        
+        $sourceRaw       = strtolower($meta['source'] ?? '');
+        $displayValue    = $meta['display_name'] ?? 'N/A';
         $stars           = $meta['stars'] ?? 'N/A';
         $totalReviews    = $meta['total_reviews'] ?? 0;
         $reviewsAnalysed = $meta['analysed'] ?? count($reviews);
+
+        $isGoogle = str_contains($sourceRaw, 'google');
+
+        $userHeaderLine = $isGoogle
+            ? "Business Name: {$displayValue}"
+            : "Domain: {$displayValue}";
 
         /*
         |--------------------------------------------------------------------------
         | User payload (matches OpenAI platform input)
         |--------------------------------------------------------------------------
         */
-        $userMessage = <<<USER
-Business Name / Domain: {$displayName}
-Source: {$source}
-Stars: {$stars}
-Total Reviews: {$totalReviews}
-Reviews Analysed: {$reviewsAnalysed}
-Timeframe: Most recent reviews
+        
+    $userMessage = <<<USER
+    {$userHeaderLine}
+    Source: {$meta['source']}
+    Stars: {$stars}
+    Total Reviews: {$totalReviews}
+    Reviews Analysed: {$reviewsAnalysed}
+    Timeframe: Most recent reviews
 
-REVIEWS (FOR ANALYSIS ONLY — DO NOT OUTPUT):
-{$reviewsText}
-USER;
+    REVIEWS (FOR ANALYSIS ONLY — DO NOT OUTPUT):
+    {$reviewsText}
+    USER;
 
         /*
         |--------------------------------------------------------------------------
@@ -126,19 +134,25 @@ Return ONLY the following sections, in this exact order.
 Do NOT add any additional commentary.
 Do NOT output review text or analysis sections.
 
+The output MUST start with the following literal header block.
+Print it EXACTLY as shown.
+Do NOT explain it.
+Do NOT modify it.
+
 ────────────────────────────────
 HEADER
 ────────────────────────────────
-IF Source = Google Reviews:
-Business Name: {$displayName}
 
-IF Source = Trustpilot Reviews:
-Domain: {$displayName}
+If Source = Google Reviews:
+Business Name: <value>
 
-Source: {$source}
-Stars: {$stars}
-Total Reviews: {$totalReviews}
-Reviews Analysed: {$reviewsAnalysed}
+If Source = Trustpilot Reviews:
+Domain: <value>
+
+Source: <value>
+Stars: <value>
+Total Reviews: <value>
+Reviews Analysed: <value>
 Timeframe: Most recent reviews
 
 ────────────────────────────────
